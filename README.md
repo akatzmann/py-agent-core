@@ -155,6 +155,11 @@ Verify the entire test suite including backend formatting correctness, tool exec
 PYTHONPATH=. pytest
 ```
 
+## Contributing
+
+We practice AI-first, spec-driven development using the [OpenSpec](https://github.com/Fission-AI/OpenSpec) framework. For all non-trivial changes, please refer to our [Contributing Guide](CONTRIBUTING.md) to set up your environment and author change specifications.
+
 ## License
 
 This project is licensed under the MIT License - see the `LICENSE` file for details.
+

@@ -109,3 +109,5 @@ env/
 # Project specific
 .agent/
 .env
+.local/
+

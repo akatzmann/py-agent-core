@@ -2,6 +2,9 @@
 
 This document outlines features and architectural improvements planned for future iterations of `PyAgentCore` but deferred for the initial implementation.
 
+> [!NOTE]
+> **For AI Coding Agents**: If you are tasked with extending this library or implementing any backlog features, please practice spec-driven development using the OpenSpec framework. Run `openspec new change "<change-name>"` to propose and implement the change.
+
 ## 1. Session Tree / Message Graph State
 
 Currently, conversation history is a flat array of messages. This is simple and aligns with standard LLM provider APIs. However, for advanced agent workflows (e.g. debugging, multi-path exploration, branching scenarios), a tree or directed acyclic graph (DAG) structure is desired.

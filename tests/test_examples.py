@@ -6,7 +6,12 @@ from examples.search_watchdog import main as watchdog_main
 from examples.structured_streaming import main as structured_main
 from examples.rhetoric_speaker import speaker_loop
 from examples.utils import get_backend_from_args
-from py_agent_core import OllamaBackend, AzureOpenAIBackend, DummyBackend
+from py_agent_core import OllamaBackend, AzureOpenAIBackend, DummyBackend, AgentEvent, PyAgent
+from examples.interactive_chat import build_tui
+from examples.guardrail_streaming import guardrail_filter
+from examples.agent_swarm import main as swarm_main
+from examples.self_healing_coder import main as coder_main, execute_python_code
+from examples.hello_agent import main as hello_main
 
 @pytest.mark.asyncio
 async def test_hierarchical_assistant_example():
@@ -71,3 +76,73 @@ def test_cli_backend_parsing_dummy():
     with patch("sys.argv", test_args):
         backend, model = get_backend_from_args()
         assert isinstance(backend, DummyBackend)
+
+@pytest.mark.asyncio
+async def test_interactive_chat_tui_build():
+    with patch("sys.argv", ["examples/interactive_chat.py"]):
+        app = build_tui()
+        assert app is not None
+        assert app.layout is not None
+
+@pytest.mark.asyncio
+async def test_guardrail_streaming_masking_and_preemption():
+    backend = DummyBackend()
+    agent = PyAgent(backend, system_prompt="test")
+    
+    # 1. Test PII masking
+    async def mock_stream_pii():
+        yield AgentEvent("text_delta", "Contact john")
+        yield AgentEvent("text_delta", "@example.com")
+        yield AgentEvent("text_delta", " now.")
+        yield AgentEvent("done", "Contact john@example.com now.")
+        
+    filtered_events = []
+    async for event in guardrail_filter(mock_stream_pii(), agent):
+        filtered_events.append(event)
+        
+    text_deltas = "".join(e.content for e in filtered_events if e.type == "text_delta")
+    assert "[REDACTED_EMAIL]" in text_deltas
+    assert "john@example.com" not in text_deltas
+    
+    # 2. Test preemption on blocked keyword
+    async def mock_stream_blocked():
+        yield AgentEvent("text_delta", "Here is ")
+        yield AgentEvent("text_delta", "toxic_keyword")
+        yield AgentEvent("text_delta", " and more text.")
+        yield AgentEvent("done", "Here is toxic_keyword and more text.")
+        
+    filtered_events = []
+    async for event in guardrail_filter(mock_stream_blocked(), agent):
+        filtered_events.append(event)
+        
+    assert agent._interrupted is True
+    interrupted_events = [e for e in filtered_events if e.type == "interrupted"]
+    assert len(interrupted_events) == 1
+    assert "Blocked content detected" in interrupted_events[0].content
+
+@pytest.mark.asyncio
+async def test_agent_swarm_example():
+    with patch("sys.argv", ["examples/agent_swarm.py"]):
+        await swarm_main()
+
+@pytest.mark.asyncio
+async def test_self_healing_coder_example_and_tool():
+    # Test tool directly with valid code
+    res_success = await execute_python_code('print("Hello from subprocess")')
+    assert "Execution Succeeded" in res_success
+    assert "Hello from subprocess" in res_success
+    
+    # Test tool directly with syntax error code
+    res_fail = await execute_python_code('print("Hello from subprocess')
+    assert "failed" in res_fail.lower()
+    assert "Traceback" in res_fail or "Error" in res_fail
+    
+    # Run full self-healing main demo
+    with patch("sys.argv", ["examples/self_healing_coder.py"]):
+        await coder_main()
+
+@pytest.mark.asyncio
+async def test_hello_agent_example():
+    with patch("sys.argv", ["examples/hello_agent.py"]):
+        await hello_main()
+
