@@ -5,6 +5,22 @@
 
 A minimalist, event-driven agent loop with **cooperative preemption** and unified backends in Python.
 
+---
+
+## Skip Reading This Readme
+
+### Context Delegation
+Your time is precious. Let your agent build the mental model.
+- **Feed this prompt** to **Antigravity**, **Claude Code**, **OpenClaw**, **OpenCode**, or **GitHub Copilot**.
+- Ask it to evaluate why our zero-overhead event loop beats heavy framework abstractions.
+
+```text
+Analyze the architecture in this README and explain how the cooperative preemption loop differs from standard agent frameworks:
+https://raw.githubusercontent.com/akatzmann/py-agent-core/main/README.md
+```
+
+---
+
 Unlike heavy, opinionated frameworks that abstract the token consumption loop, `py-agent-core` puts you in absolute control of the prompt-to-response lifecycle, allowing you to intercept streaming generations token-by-token and orchestrate complex tool executions or nested hierarchical sub-agents.
 
 > [!NOTE]
@@ -24,19 +40,21 @@ Unlike heavy, opinionated frameworks that abstract the token consumption loop, `
 
 ## Installation
 
-Clone the repository and install dependencies:
+### For Humans
+Why type commands manually? Delegate the environment setup to **Antigravity**, **Claude Code**, or **OpenClaw**:
+
+```text
+Initialize, configure, and verify the local development environment using:
+https://raw.githubusercontent.com/akatzmann/py-agent-core/main/docs/guide/installation.md
+```
+
+*(Or inspect the [Installation Guide](docs/guide/installation.md) manually, if you must.)*
+
+### For LLM Agents
+Fetch the setup specifications and execute:
 
 ```bash
-# Clone the repository
-git clone https://github.com/akatzmann/py-agent-core.git
-cd py-agent-core
-
-# Set up a virtual environment
-python3 -m venv .venv
-source .venv/bin/activate
-
-# Install package with test dependencies
-pip install -e ".[test]"
+curl -s https://raw.githubusercontent.com/akatzmann/py-agent-core/main/docs/guide/installation.md
 ```
 
 ---
