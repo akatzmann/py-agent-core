@@ -21,6 +21,7 @@ The system SHALL support cooperative interruption during both token streaming an
 #### Scenario: Interrupted before tool execution
 - **WHEN** the abort signal is set after a tool call is parsed but before execution begins
 - **THEN** the runner SHALL bypass execution of the tool, yield `interrupted`, and terminate execution.
+## ADDED Requirements
 
 ### Requirement: Turn Transition Controls
 The system SHALL support dynamic turn transition hooks (`prepare_next_turn` and `should_stop_after_turn`) to customize configuration or stop execution between execution turns.
