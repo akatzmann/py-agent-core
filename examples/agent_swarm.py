@@ -20,7 +20,7 @@ async def stream_agent(name: str, agent_loop) -> str:
                             print(f"[{name}] {line.strip()}")
                     buffer = lines[-1]
         elif event.type == "agent_end":
-            # Find the consolidated answer in events
+            # Messages are stored oldest-first; reverse to find the latest assistant reply efficiently
             for msg in reversed(event.messages):
                 if msg.get("role") == "assistant":
                     final_output = msg.get("content") or ""
@@ -58,7 +58,8 @@ async def main():
 
     print("=== Phase 1: Running Research and Outline in Parallel ===")
     
-    # Spawn tasks concurrently
+    # create_task() schedules both coroutines to run concurrently on the event loop,
+    # then gather() waits for both to complete before proceeding to the synthesizer
     research_task = asyncio.create_task(stream_agent("Researcher", researcher.prompt_stream(research_prompt)))
     outline_task = asyncio.create_task(stream_agent("Outliner", outliner.prompt_stream(outline_prompt)))
     

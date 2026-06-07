@@ -29,7 +29,35 @@ A minimal "Hello World" example that instantiates an agent, streams response tok
 * **Core Concept**: Bare-minimum async loop setup.
 * **Mechanism**: Sets up an `Agent` instance, runs the async runner, and outputs raw token stream responses.
 
-### B. Structured Streaming (`structured_streaming.py`)
+### B. Minimal Coder (`minimal_coder.py`)
+
+The shortest path to a **tool-calling agent** with a human-in-the-loop approval gate:
+1. User enters a task (e.g. *"What is the factorial of 12?"*).
+2. The LLM writes Python code and calls the `run_python_code` tool.
+3. The user is prompted to approve or reject execution.
+4. Code runs in a subprocess and the result is returned to the agent.
+
+```text
+               ┌───────────────────────┐
+               │  agent.prompt_stream  │
+               └───────────┬───────────┘
+                           │ (tool_call)
+                           ▼
+               ┌───────────────────────┐
+               │  run_python_code tool │
+               │  → input("Approve?")  │
+               └───────────┬───────────┘
+                           │ (subprocess)
+                           ▼
+               ┌───────────────────────┐
+               │  stdout / stderr      │
+               └───────────────────────┘
+```
+
+* **Core Concept**: `@tool` definition + user-confirmation gate.
+* **Mechanism**: Defines one `@tool` function with `asyncio.to_thread(input, ...)` so the approval prompt is non-blocking, then runs a single `Agent.prompt_stream()` loop. Entire example fits in one screen.
+
+### C. Structured Streaming (`structured_streaming.py`)
 
 A simple demonstration of running the event loop, streaming raw tokens, and parsing structured data.
 
@@ -104,6 +132,21 @@ Showcases how to build multi-agent hierarchies by running sub-agents inside stan
 * **Mechanism**: Defines `@tool` functions that instantiate and run specialized child sub-agents (a `code_writer` and a `code_reviewer`). The parent coordinator agent calls these tools sequentially to complete a coding request.
 
 ---
+
+## Context Delegation for AI Coding Agents
+
+Your time is precious. Let your agent build the mental model for these examples.
+
+- **Feed this prompt** to **Antigravity**, **Claude Code**, **OpenClaw**, **OpenCode**, or **GitHub Copilot**.
+- Ask it to navigate and understand the examples directory before making any changes.
+
+```text
+Read examples/README.md in the py-agent-core repository and explain:
+1. What each example demonstrates and which py_agent_core features it exercises.
+2. The difference between fundamental and advanced examples.
+3. How minimal_coder.py differs from self_healing_coder.py in terms of complexity and goal.
+4. The pattern used for user-in-the-loop tool approval.
+```
 
 ## 2. Advanced Examples
 
@@ -265,6 +308,7 @@ All examples support the standard command-line backend flags (`--backend`, `--mo
 By default, examples run with a local `DummyBackend` requiring no API keys or internet connection:
 ```bash
 python -m examples.hello_agent
+python -m examples.minimal_coder
 python -m examples.structured_streaming
 python -m examples.search_watchdog
 python -m examples.rhetoric_speaker

@@ -46,6 +46,7 @@ class AdvancedDummyBackend(DummyBackend):
         # Filter messages to count user turns
         user_msgs = [m for m in messages if m.get("role") == "user"]
         
+        # Turn detection: count only tool-result messages in history to know which turn we're on
         if len(user_msgs) == 1 and not tool_msgs:
             # Turn 1: Trigger parallel tool execution
             yield BackendChunk(text="Initiating parallel data retrieval. Please wait...\n")
@@ -96,6 +97,7 @@ async def human_approval_gate(data, abort_signal):
     
     if tool_name == "run_shell_command":
         # Auto-approve if in non-interactive environment or test run
+        # isatty() guards against hanging on stdin in CI/CD pipelines and pytest runs
         is_interactive = sys.stdin.isatty() and "--non-interactive" not in sys.argv
         if not is_interactive:
             print(f"\n[Gate: before_tool_call] Non-interactive mode: Auto-approving '{tool_name}' with args {args}")
@@ -192,10 +194,11 @@ async def main():
         transform_context=transform_context_pipeline,
         before_tool_call=human_approval_gate,
         after_tool_call=tool_outcome_auditor,
-        tool_execution="parallel"  # Run independent tool calls concurrently
+        tool_execution="parallel"  # Independent tool calls within one LLM turn run concurrently
     )
     
-    # Subscribe the telemetry logger
+    # subscribe() fires the callback for EVERY event (not just lifecycle boundaries)
+    # — it is a fire-and-forget side-channel; the main loop is unaffected
     agent.subscribe(console_audit_logger)
     
     # Execute run
@@ -214,9 +217,11 @@ async def main():
     
     # Inject a user steer prompt while agent is idle (will trigger on next run)
     print("\nEnqueuing follow-up action...")
+    # follow_up() appends to the queue: processed after the current run completes
     agent.follow_up({"role": "user", "content": "Confirm that the final system initialization is completely done."})
     
     print("Enqueuing steer override...")
+    # steer() prepends to the front of the queue: processed before follow_up messages
     agent.steer({"role": "user", "content": "Actually, write a brief final confirmation statement."})
     
     # Resume agent execution to drain queues

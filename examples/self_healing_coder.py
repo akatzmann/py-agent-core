@@ -19,6 +19,8 @@ async def execute_python_code(code: str) -> str:
     
     try:
         proc = await asyncio.create_subprocess_exec(
+            # Use sys.executable (the current interpreter) rather than "python"
+            # so the subprocess inherits the same virtualenv and installed packages
             sys.executable, "-c", code,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE
@@ -79,7 +81,7 @@ class CoderDummyBackend(DummyBackend):
         tool_msgs = [m for m in messages if m.get("role") == "tool"]
         
         if not tool_msgs:
-            # Turn 1: Emit code with a syntax error (missing parenthesis)
+            # Turn 1: No tool results yet — agent generates first attempt (with the planted bug)
             bad_code = (
                 "def calculate_factorial(n):\n"
                 "    if n == 0 or n == 1:\n"
@@ -95,7 +97,7 @@ class CoderDummyBackend(DummyBackend):
                 ToolCallChunk(index=0, id="call_1", arguments=json.dumps({"code": bad_code}))
             ])
         elif len(tool_msgs) == 1:
-            # Turn 2: Detect failure in tool output, emit corrected code
+            # Turn 2: One tool result exists; inspect its content to decide whether to retry
             last_result = tool_msgs[0].get("content") or ""
             if "failed" in last_result.lower() or "error" in last_result.lower():
                 good_code = (

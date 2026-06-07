@@ -45,6 +45,9 @@ async def main():
             print("Stream finished. Parsing final consolidated output...")
             
             assistant_content = ""
+            # Consolidate from history rather than building a string from deltas:
+            # streaming chunks may be partial UTF-8 codepoints or split JSON tokens,
+            # so history always contains the complete, validated string from the backend
             for msg in reversed(agent.state.messages):
                 if msg.get("role") == "assistant":
                     assistant_content = msg.get("content") or ""

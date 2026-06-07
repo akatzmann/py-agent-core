@@ -20,6 +20,7 @@ async def main():
                 print(ev["delta"], end="", flush=True)
         elif event.type == "agent_end":
             assistant_content = ""
+            # Messages are stored oldest-first; reverse to find the latest assistant reply quickly
             for msg in reversed(agent.state.messages):
                 if msg.get("role") == "assistant":
                     assistant_content = msg.get("content") or ""

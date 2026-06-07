@@ -8,7 +8,11 @@ BLOCKED_KEYWORDS = ["toxic_keyword", "leak_private_key", "nuclear_launch_codes"]
 EMAIL_REGEX = re.compile(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+")
 
 async def guardrail_filter(agent_loop, agent):
-    """Event-driven guardrail that filters PII and preempts on blocked words."""
+    """Cooperative async generator that wraps the agent loop and filters events in-flight.
+    
+    It intercepts every event yielded by agent_loop, applies guards, and re-yields
+    (possibly modified) events — transparent to the caller's for-loop.
+    """
     buffer = ""
     async for event in agent_loop:
         if event.type == "message_update" and event.assistant_message_event.get("type") == "text_delta":
@@ -17,11 +21,14 @@ async def guardrail_filter(agent_loop, agent):
             
             # 1. Check for blocked keywords immediately
             if any(keyword in buffer.lower() for keyword in BLOCKED_KEYWORDS):
+                # abort() sets a signal checked on the next event yield inside the agent loop
                 agent.abort()
                 yield InterruptedEvent("Blocked content detected (Guardrail Alert)")
                 return
             
             # 2. Extract and flush completed words to prevent PII regex split-boundary bypass
+            # Split on spaces so we only process complete words — prevents regex from
+            # seeing a pattern split across two streaming chunks (e.g. 'use@r' + '.com')
             if " " in buffer:
                 parts = buffer.split(" ")
                 words_to_flush = parts[:-1]

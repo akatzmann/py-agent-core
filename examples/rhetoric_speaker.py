@@ -32,11 +32,13 @@ async def input_listener(agent_context: dict):
     loop = asyncio.get_running_loop()
     while True:
         try:
+            # run_in_executor wraps blocking stdin.readline so it doesn't stall the event loop
             user_input = await loop.run_in_executor(None, sys.stdin.readline)
             new_topic = user_input.strip()
             if new_topic:
                 agent_context["pending_topic"] = new_topic
                 if agent_context["agent"]:
+                    # abort() sets a signal; the agent loop will stop on its next yield
                     agent_context["agent"].abort()
         except Exception:
             break
@@ -103,7 +105,8 @@ async def speaker_loop(agent_context: dict, backend, model: str):
             # Clear or seed transition in history
             live_history = [{"role": "system", "content": f"You are a speaker who just transitioned to {current_topic}."}]
         else:
-            # Save history state for continuous generation on next turn
+            # Pass the completed message history to the next Agent instance so context
+            # is preserved across topic-transition boundaries (each turn creates a new Agent)
             live_history = agent.state.messages
             print(" ", end="", flush=True)
             await asyncio.sleep(1.5)
