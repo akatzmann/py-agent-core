@@ -2,6 +2,8 @@
 
 The recent architectural alignment added powerful, stateful orchestration features to the `Agent` class (subscriptions, interception hooks, context pipelines, and dynamic queues). To make these features accessible, clear, and easy to implement, we need a dedicated example showcasing best practices for telemetry, human-in-the-loop validation, custom message mapping, and steering.
 
+Additionally, we need clear, discoverable documentation in the root and examples READMEs so that developers and AI agents can locate the examples.
+
 ## Goals / Non-Goals
 
 **Goals:**
@@ -14,6 +16,8 @@ The recent architectural alignment added powerful, stateful orchestration featur
   6. Dynamic prompt injection mid-run using `Agent.steer()` and `Agent.follow_up()`.
 - Run offline by default using the `DummyBackend` or a mock backend.
 - Integrate validation tests for the new script in `tests/test_examples.py`.
+- Update `examples/README.md` to document the new example.
+- Update the root `README.md` to map all examples and refer to `examples/README.md` for details.
 
 **Non-Goals:**
 - Modifying the core `Agent` or `agent_loop` implementation.
@@ -32,6 +36,10 @@ The recent architectural alignment added powerful, stateful orchestration featur
 ### 3. Context Pipeline & Translation Mock
 - **Choice**: Define a custom `ui-card` role representing rich UI elements, mapped to standard user messages via `convert_to_llm`, and a basic `transform_context` hook that limits message history to the last 3 messages + system prompt.
 - **Rationale**: Demonstrates how real-world applications manage custom UI payloads and prevent tokens limit issues.
+
+### 4. Discoverability for AI Agents
+- **Choice**: Add an "Examples & Demos" index section directly to the root `README.md`, listing fundamental and advanced examples with references to `examples/README.md`.
+- **Rationale**: Guides autonomous AI coding tools directly to the relevant files and design specs without requiring exploratory directory walks.
 
 ## Risks / Trade-offs
 

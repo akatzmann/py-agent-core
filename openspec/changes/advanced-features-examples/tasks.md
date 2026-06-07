@@ -10,4 +10,5 @@
 ## 2. Verification and Documentation
 
 - [ ] 2.1 Add automated test coverage in `tests/test_examples.py` to run `examples/advanced_agent_features.py` in non-interactive mode.
-- [ ] 2.2 Update `examples/README.md` to document the new script.
+- [ ] 2.2 Update `examples/README.md` to document the new `examples/advanced_agent_features.py` script.
+- [ ] 2.3 Update the root `README.md` to add a dedicated examples index section mapping out the fundamental and advanced scripts, referring to `examples/README.md` for full walk-throughs.
