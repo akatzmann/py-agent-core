@@ -1,5 +1,5 @@
 import asyncio
-from py_agent_core import PyAgent, DummyBackend
+from py_agent_core import Agent, DummyBackend
 from examples.utils import get_backend_from_args
 
 async def stream_agent(name: str, agent_loop) -> str:
@@ -8,17 +8,23 @@ async def stream_agent(name: str, agent_loop) -> str:
     final_output = ""
     
     async for event in agent_loop:
-        if event.type == "text_delta":
-            buffer += event.content
-            # Print output line-by-line to preserve structure while showing concurrency
-            if "\n" in buffer:
-                lines = buffer.split("\n")
-                for line in lines[:-1]:
-                    if line.strip():
-                        print(f"[{name}] {line.strip()}")
-                buffer = lines[-1]
-        elif event.type == "done":
-            final_output = event.content
+        if event.type == "message_update":
+            ev = getattr(event, "assistant_message_event", {})
+            if ev.get("type") == "text_delta":
+                buffer += ev["delta"]
+                # Print output line-by-line to preserve structure while showing concurrency
+                if "\n" in buffer:
+                    lines = buffer.split("\n")
+                    for line in lines[:-1]:
+                        if line.strip():
+                            print(f"[{name}] {line.strip()}")
+                    buffer = lines[-1]
+        elif event.type == "agent_end":
+            # Find the consolidated answer in events
+            for msg in reversed(event.messages):
+                if msg.get("role") == "assistant":
+                    final_output = msg.get("content") or ""
+                    break
             if buffer.strip():
                 print(f"[{name}] {buffer.strip()}")
             print(f"[{name} Completed]")
@@ -30,22 +36,22 @@ async def main():
     backend, model = get_backend_from_args("Collaborative Agent Swarm Demo")
     
     # Setup worker agents
-    researcher = PyAgent(backend, system_prompt="You are a factual research assistant.")
-    outliner = PyAgent(backend, system_prompt="You are an editorial outliner who drafts document structures.")
+    researcher = Agent(backend, initial_state={"systemPrompt": "You are a factual research assistant."})
+    outliner = Agent(backend, initial_state={"systemPrompt": "You are an editorial outliner who drafts document structures."})
     
     # Configure mock responses if using DummyBackend
     if isinstance(backend, DummyBackend):
         # We need distinct mock backends to run them concurrently with different texts
         research_backend = DummyBackend(
-            lorem_text="Fact 1: Fusion energy generates zero greenhouse gases. Fact 2: It uses abundant fuel sources (hydrogen isotopes). Fact 3: Commercial deployment is targeted for the 2030s.",
+            lorem_text="Fact 1: Fusion energy generates zero greenhouse gases.\nFact 2: It uses abundant fuel sources (hydrogen isotopes).\nFact 3: Commercial deployment is targeted for the 2030s.",
             chunk_delay=0.04
         )
         outline_backend = DummyBackend(
-            lorem_text="I. Introduction to Fusion Energy. II. Core Engineering Obstacles. III. Financial and Environmental Outlook.",
+            lorem_text="I. Introduction to Fusion Energy.\nII. Core Engineering Obstacles.\nIII. Financial and Environmental Outlook.",
             chunk_delay=0.06
         )
-        researcher = PyAgent(research_backend, researcher.system_prompt)
-        outliner = PyAgent(outline_backend, outliner.system_prompt)
+        researcher = Agent(research_backend, initial_state={"systemPrompt": researcher.state.system_prompt})
+        outliner = Agent(outline_backend, initial_state={"systemPrompt": outliner.state.system_prompt})
 
     research_prompt = "Find 3 key facts about nuclear fusion breakthroughs."
     outline_prompt = "Draft a 3-section outline for a report on fusion power."
@@ -53,8 +59,8 @@ async def main():
     print("=== Phase 1: Running Research and Outline in Parallel ===")
     
     # Spawn tasks concurrently
-    research_task = asyncio.create_task(stream_agent("Researcher", researcher.run_loop(research_prompt)))
-    outline_task = asyncio.create_task(stream_agent("Outliner", outliner.run_loop(outline_prompt)))
+    research_task = asyncio.create_task(stream_agent("Researcher", researcher.prompt_stream(research_prompt)))
+    outline_task = asyncio.create_task(stream_agent("Outliner", outliner.prompt_stream(outline_prompt)))
     
     # Wait for both workers to finish
     research_result, outline_result = await asyncio.gather(research_task, outline_task)
@@ -62,7 +68,7 @@ async def main():
     print("\n=== Phase 2: Running Synthesizer Agent to Compile Report ===")
     
     # Setup coordinator/synthesizer agent
-    synthesizer = PyAgent(backend, system_prompt="You are a report writer who compiles researcher facts and outline structures into markdown.")
+    synthesizer = Agent(backend, initial_state={"systemPrompt": "You are a report writer who compiles researcher facts and outline structures into markdown."})
     if isinstance(backend, DummyBackend):
         compiled_markdown = (
             "# Fusion Power: The Future of Clean Energy\n\n"
@@ -74,7 +80,7 @@ async def main():
             "Commercial deployment targets the 2030s, revolutionizing global clean electricity grids."
         )
         synth_backend = DummyBackend(lorem_text=compiled_markdown, chunk_delay=0.02)
-        synthesizer = PyAgent(synth_backend, synthesizer.system_prompt)
+        synthesizer = Agent(synth_backend, initial_state={"systemPrompt": synthesizer.state.system_prompt})
 
     synth_prompt = (
         f"Compile the following research facts and outline structure into a clean markdown document.\n\n"
@@ -82,7 +88,7 @@ async def main():
     )
     
     print("[Synthesizer] Compiling final report...")
-    final_report = await stream_agent("Synthesizer", synthesizer.run_loop(synth_prompt))
+    final_report = await stream_agent("Synthesizer", synthesizer.prompt_stream(synth_prompt))
     
     print("\n=== Final Markdown Generated ===")
     print(final_report)

@@ -1,5 +1,5 @@
 import asyncio
-from py_agent_core import PyAgent, DummyBackend, tool
+from py_agent_core import Agent, DummyBackend, tool
 from examples.utils import get_backend_from_args
 
 # Define a slow search tool
@@ -16,24 +16,26 @@ async def slow_search(query: str) -> str:
     print(f"[Tool] slow_search completed for: '{query}'.")
     return f"Mock search results for: '{query}'"
 
-async def watchdog_timer(agent: PyAgent, max_execution_time: float):
+async def watchdog_timer(agent: Agent, max_execution_time: float):
     """Asynchronous watchdog that interrupts the agent after a timeout."""
     await asyncio.sleep(max_execution_time)
     print(f"\n[Watchdog] Execution limit of {max_execution_time}s reached! Interrupting...")
-    agent.interrupt()
+    agent.abort()
 
 async def main():
     backend, model = get_backend_from_args("Watchdog Timeout Interruption Demo")
     print(f"Initializing Watchdog Demo using: {backend.__class__.__name__} ({model})...")
     
-    agent = PyAgent(
+    agent = Agent(
         backend=backend,
-        system_prompt="You are a helpful assistant who always runs slow_search when asked to find information.",
-        tools=[slow_search]
+        initial_state={
+            "systemPrompt": "You are a helpful assistant who always runs slow_search when asked to find information.",
+            "tools": [slow_search]
+        }
     )
     
     if isinstance(backend, DummyBackend):
-        # Format the prompt to call the tool inside DummyBackend
+        # Format the prompt to trigger a mock tool call sequence in DummyBackend
         prompt = 'call_tool:slow_search:{"query": "deep learning advancements"}'
     else:
         prompt = "Please search the web for 'deep learning advancements'."
@@ -46,19 +48,21 @@ async def main():
     interrupted = False
     
     try:
-        async for event in agent.run_loop(prompt):
-            if event.type == "text_delta":
-                print(event.content, end="", flush=True)
-            elif event.type == "tool_start":
-                print(f"\n[Parent] Tool execution started: '{event.content}'")
-            elif event.type == "tool_end":
-                print(f"\n[Parent] Tool execution completed: '{event.content['tool']}'")
+        async for event in agent.prompt_stream(prompt):
+            if event.type == "message_update":
+                ev = getattr(event, "assistant_message_event", {})
+                if ev.get("type") == "text_delta":
+                    print(ev["delta"], end="", flush=True)
+            elif event.type == "tool_execution_start":
+                print(f"\n[Parent] Tool execution started: '{event.tool_name}'")
+            elif event.type == "tool_execution_end":
+                print(f"\n[Parent] Tool execution completed: '{event.tool_name}'")
             elif event.type == "interrupted":
-                print(f"\n[Parent] Agent reported interruption event: {event.content}")
+                print(f"\n[Parent] Agent reported interruption event: {event.reason}")
                 interrupted = True
                 break
-            elif event.type == "done":
-                print(f"\n[Parent] Agent completed task normally: {event.content}")
+            elif event.type == "agent_end":
+                print(f"\n[Parent] Agent completed task normally.")
     finally:
         # Clean up the watchdog task
         watchdog_task.cancel()

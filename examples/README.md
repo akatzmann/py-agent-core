@@ -16,41 +16,41 @@ Start here to understand the core programming model and event loop mechanics of 
 A minimal "Hello World" example that instantiates an agent, streams response tokens, and consumes event-driven logs.
 
 ```text
-               ┌───────────────────────┐
-               │    PyAgent.run_loop   │
-               └───────────┬───────────┘
-                           │ (text_delta events)
+               ┌────────────────────────┐
+               │  Agent.prompt_stream   │
+               └───────────┬────────────┘
+                           │ (message_update events)
                            ▼
-               ┌───────────────────────┐
-               │ Stream to stdout      │
-               └───────────────────────┘
+               ┌────────────────────────┐
+               │ Stream to stdout       │
+               └────────────────────────┘
 ```
 
 * **Core Concept**: Bare-minimum async loop setup.
-* **Mechanism**: Sets up a `PyAgent` instance, runs the async runner, and outputs raw token stream responses.
+* **Mechanism**: Sets up an `Agent` instance, runs the async runner, and outputs raw token stream responses.
 
 ### B. Structured Streaming (`structured_streaming.py`)
 
 A simple demonstration of running the event loop, streaming raw tokens, and parsing structured data.
 
 ```text
-               ┌───────────────────────┐
-               │    PyAgent.run_loop   │
-               └───────────┬───────────┘
-                           │ (text_delta events)
+               ┌────────────────────────┐
+               │  Agent.prompt_stream   │
+               └───────────┬────────────┘
+                           │ (message_update events)
                            ▼
-               ┌───────────────────────┐
+               ┌────────────────────────┐
                │ Stream JSON to Terminal│
-               └───────────┬───────────┘
-                           │ (done event)
+               └───────────┬────────────┘
+                           │ (agent_end event)
                            ▼
-               ┌───────────────────────┐
-               │ json.loads(complete)  │
-               └───────────────────────┘
+               ┌────────────────────────┐
+               │ json.loads(complete)   │
+               └────────────────────────┘
 ```
 
 * **Core Concept**: Basic event consumption.
-* **Mechanism**: Runs the agent loop, prints the streaming `text_delta` tokens as they arrive, and consolidates the output on a `done` event to parse it as standard JSON.
+* **Mechanism**: Runs the agent loop, prints the streaming `text_delta` tokens as they arrive, and consolidates the output on an `agent_end` event to parse it as standard JSON.
 
 ### C. Search Watchdog (`search_watchdog.py`)
 
@@ -60,10 +60,10 @@ Shows how to abort an agent's execution from an external task if a timeout is re
                 ┌─────────────────────────────────┐
                 │       Watchdog Timer (1s)       │
                 └────────────────┬────────────────┘
-                                 │ (Sleep & interrupt)
+                                 │ (Sleep & abort)
                                  ▼
-         ┌───────────┐      agent.interrupt()      ┌───────────┐
-         │  PyAgent  │────────────────────────────▶│   Agent   │
+         ┌───────────┐        agent.abort()        ┌───────────┐
+         │   Agent   │────────────────────────────▶│   Agent   │
          │  Running  │                             │  Aborted  │
          └───────────┘                             └───────────┘
                │
@@ -74,30 +74,30 @@ Shows how to abort an agent's execution from an external task if a timeout is re
 ```
 
 * **Core Concept**: Timeout-based cooperative preemption.
-* **Mechanism**: Spawns a background watchdog timer alongside the agent loop. If the agent's registered `slow_search` tool runs longer than the watchdog threshold (1s vs 3s), the watchdog calls `agent.interrupt()` to abort the runner immediately.
+* **Mechanism**: Spawns a background watchdog timer alongside the agent loop. If the agent's registered `slow_search` tool runs longer than the watchdog threshold (1s vs 3s), the watchdog calls `agent.abort()` to abort the runner immediately.
 
 ### D. Rhetoric Speaker Monologue (`rhetoric_speaker.py`)
 
 Demonstrates how to interrupt an active speech monologue mid-generation using standard input.
 
 * **Core Concept**: User-initiated live preemption.
-* **Mechanism**: Runs an infinite monologue speaking loop. A background input listener reads `sys.stdin`. When the user types a new topic and hits Enter, the listener calls `agent.interrupt()` to abort the monologue, and the agent uses the new topic to continue speaking.
+* **Mechanism**: Runs an continuous monologue speaking loop. A background input listener reads `sys.stdin`. When the user types a new topic and hits Enter, the listener calls `agent.abort()` to abort the monologue, and the agent uses the new topic to continue speaking.
 
 ### E. Hierarchical Assistant (`hierarchical_assistant.py`)
 
 Showcases how to build multi-agent hierarchies by running sub-agents inside standard Python tools.
 
 ```text
-               ┌─────────────────────────────────┐
-               │         Parent Agent            │
-               └──────────────┬──────────────────┘
-                              │
-               ┌──────────────┴──────────────┐
-               ▼ (Calls tool)                ▼ (Calls tool)
-      ┌──────────────────┐          ┌──────────────────┐
-      │   code_writer    │          │  code_reviewer   │
-      │    Sub-Agent     │          │    Sub-Agent     │
-      └──────────────────┘          └──────────────────┘
+                ┌─────────────────────────────────┐
+                │         Parent Agent            │
+                └──────────────┬──────────────────┘
+                               │
+                ┌──────────────┴──────────────┐
+                ▼ (Calls tool)                ▼ (Calls tool)
+       ┌──────────────────┐          ┌──────────────────┐
+       │   code_writer    │          │  code_reviewer   │
+       │    Sub-Agent     │          │    Sub-Agent     │
+       └──────────────────┘          └──────────────────┘
 ```
 
 * **Core Concept**: Nested execution loops (agents as tools).
@@ -115,7 +115,7 @@ A full interactive terminal chat UI that decouples user keyboard typing from asy
 
 ```text
 ┌────────────────────────────────────────────────────────┐
-│  PyAgent Interactive Chat TUI             [STATUS: ○]  │
+│  Agent Interactive Chat TUI               [STATUS: ○]  │
 ├────────────────────────────────────────────────────────┤
 │ User: Explain quantum superposition.                   │
 │ Agent: In quantum mechanics, superposition is a        │
@@ -128,7 +128,7 @@ A full interactive terminal chat UI that decouples user keyboard typing from asy
 ```
 
 * **Core Concept**: Decoupled interactive terminal preemption.
-* **Mechanism**: Uses `prompt_toolkit` to split screen buffers. If the user presses any key while the status is "Streaming", the UI immediately invokes `agent.interrupt()`, halts the active stream, and captures the keystroke as the start of the next query.
+* **Mechanism**: Uses `prompt_toolkit` to split screen buffers. If the user presses any key while the status is "Streaming", the UI immediately invokes `agent.abort()`, halts the active stream, and captures the keystroke as the start of the next query.
 
 ### B. Streaming Guardrails & Masking Interceptor (`guardrail_streaming.py`)
 
@@ -146,13 +146,13 @@ A token-by-token stream interceptor that filters PII data and interrupts generat
                            │ (Inspects & checks matches)
              ┌─────────────┴─────────────┐
              ▼ (Censored / Redacted)     ▼ (Toxic / Blocked)
-       Censor stream content       1. Calls agent.interrupt()
+       Censor stream content       1. Calls agent.abort()
        (e.g. user@email.com        2. Yields 'interrupted' event
         -> [REDACTED])             3. Stops yielding deltas
 ```
 
 * **Core Concept**: Non-intrusive stream middleware.
-* **Mechanism**: An async generator wrapper processes the agent stream. It uses word-buffering to prevent token-split regex evasion, replaces emails with redact placeholders, and immediately calls `agent.interrupt()` if blocked content keywords appear.
+* **Mechanism**: An async generator wrapper processes the agent stream. It uses word-buffering to prevent token-split regex evasion, replaces emails with redact placeholders, and immediately calls `agent.abort()` if blocked content keywords appear.
 
 ### C. Parallel Agent Swarm (`agent_swarm.py`)
 
@@ -163,16 +163,16 @@ Shows how to run multiple independent agents concurrently using native async Pyt
                        │  User Request Prompt │
                        └──────────┬───────────┘
                                   ▼
-                    ┌────────────────────────────┐
-                    │  asyncio.gather() Spawns:  │
-                    └──────┬──────────────┬──────┘
-                           │              │
-        ┌──────────────────┴──┐        ┌──┴──────────────────┐
-        │  Researcher Agent   │        │   Outline Agent     │
-        │  (Calls slow tools) │        │  (Drafts structure) │
-        └──────────────────┬──┘        └──┬──────────────────┘
-                           │                  │
-                           └──────────┬───────┘
+                     ┌────────────────────────────┐
+                     │  asyncio.gather() Spawns:  │
+                     └──────┬──────────────┬──────┘
+                            │              │
+         ┌──────────────────┴──┐        ┌──┴──────────────────┐
+         │  Researcher Agent   │        │   Outline Agent     │
+         │  (Calls slow tools) │        │  (Drafts structure) │
+         └──────────────────┬──┘        └──┬──────────────────┘
+                            │                  │
+                            └──────────┬───────┘
                                       ▼
                        ┌──────────────────────┐
                        │  Synthesizer Agent   │
@@ -181,28 +181,28 @@ Shows how to run multiple independent agents concurrently using native async Pyt
 ```
 
 * **Core Concept**: Zero-opinion parallel task execution.
-* **Mechanism**: Executes `ResearcherAgent` and `OutlineAgent` concurrently using `asyncio.gather()`. Their event loops are interleaved and printed to the terminal with custom prefixes, and the outputs are synthesized by a final coordinator agent.
+* **Mechanism**: Executes `researcher` and `outliner` concurrently using `asyncio.gather()`. Their event loops are interleaved and printed to the terminal with custom prefixes, and the outputs are synthesized by a final coordinator agent.
 
 ### D. Self-Healing Developer Loop (`self_healing_coder.py`)
 
 An autonomous code writer that executes scripts in subprocesses and auto-corrects runtime/syntax errors.
 
 ```text
-                ┌─────────────────────────────────┐
-                │        Agent: Write Code        │
-                └────────────────┬────────────────┘
-                                 │
-                                 ▼
-                ┌─────────────────────────────────┐
-                │  Tool: execute_python_code()   │
-                └────────────────┬────────────────┘
-                                 │
-                                 ▼
-                     Code compiles & runs?
-                     ┌───────────┴───────────┐
-                     ▼ (No: Exception)       ▼ (Yes: Success)
-             Feed traceback to Agent      Complete task
-             (Agent corrects syntax/logic)
+                 ┌─────────────────────────────────┐
+                 │        Agent: Write Code        │
+                 └────────────────┬────────────────┘
+                                  │
+                                  ▼
+                 ┌─────────────────────────────────┐
+                 │  Tool: execute_python_code()   │
+                 └────────────────┬────────────────┘
+                                  │
+                                  ▼
+                      Code compiles & runs?
+                      ┌───────────┴───────────┐
+                      ▼ (No: Exception)       ▼ (Yes: Success)
+              Feed traceback to Agent      Complete task
+              (Agent corrects syntax/logic)
 ```
 
 * **Core Concept**: Code interpreter tool integration & context healing.
@@ -230,5 +230,5 @@ python -m examples.self_healing_coder
 
 ### Running with a Local Model (Ollama)
 ```bash
-python -m examples.interactive_chat --backend ollama --model llama3
+python -m examples.hello_agent --backend ollama --model qwen3-4b-instruct-2507:latest --endpoint http://localhost:11434
 ```

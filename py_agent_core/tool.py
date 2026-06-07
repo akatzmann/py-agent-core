@@ -2,7 +2,7 @@ import asyncio
 import inspect
 import re
 import json
-from typing import Callable, Any, Dict, Optional, Tuple, get_type_hints
+from typing import Callable, Any, Dict, Optional, Tuple, get_type_hints, Union
 from functools import wraps
 
 def parse_docstring(doc: Optional[str]) -> Tuple[str, Dict[str, str]]:
@@ -83,10 +83,11 @@ def map_type(py_type) -> str:
     return "string"
 
 class Tool:
-    def __init__(self, func: Callable):
+    def __init__(self, func: Callable, execution_mode: str = "parallel"):
         self.func = func
         self.__name__ = func.__name__
         self.__doc__ = func.__doc__
+        self.execution_mode = getattr(func, "execution_mode", execution_mode)
         
         # Extrospect metadata
         self.definition = self._build_definition()
@@ -153,9 +154,13 @@ class Tool:
             # Run in executor if it's synchronous to prevent blocking the async loop
             return await asyncio.to_thread(self.func, *args, **kwargs)
 
-def tool(func: Callable) -> Tool:
+def tool(func: Optional[Callable] = None, *, execution_mode: str = "parallel") -> Union[Tool, Callable[[Callable], Tool]]:
     """Decorator to convert a standard Python function into an LLM-compatible tool.
     
     Parses function name, parameters, type hints, and docstrings automatically.
     """
-    return Tool(func)
+    if func is None:
+        def decorator(f: Callable) -> Tool:
+            return Tool(f, execution_mode=execution_mode)
+        return decorator
+    return Tool(func, execution_mode=execution_mode)

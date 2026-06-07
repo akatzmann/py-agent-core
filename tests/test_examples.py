@@ -1,12 +1,20 @@
 import pytest
 import asyncio
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 from examples.hierarchical_assistant import main as assistant_main
 from examples.search_watchdog import main as watchdog_main
 from examples.structured_streaming import main as structured_main
 from examples.rhetoric_speaker import speaker_loop
 from examples.utils import get_backend_from_args
-from py_agent_core import OllamaBackend, AzureOpenAIBackend, DummyBackend, AgentEvent, PyAgent
+from py_agent_core import (
+    OllamaBackend,
+    AzureOpenAIBackend,
+    DummyBackend,
+    Agent,
+    MessageUpdateEvent,
+    AgentEndEvent,
+    InterruptedEvent
+)
 from examples.interactive_chat import build_tui
 from examples.guardrail_streaming import guardrail_filter
 from examples.agent_swarm import main as swarm_main
@@ -37,7 +45,7 @@ async def test_rhetoric_speaker_example_interrupted():
         await asyncio.sleep(0.1)
         if agent_context["agent"]:
             agent_context["pending_topic"] = "Bird Migration"
-            agent_context["agent"].interrupt()
+            agent_context["agent"].abort()
             
     speaker_task = asyncio.create_task(
         speaker_loop(agent_context, DummyBackend(), "dummy-model")
@@ -87,38 +95,47 @@ async def test_interactive_chat_tui_build():
 @pytest.mark.asyncio
 async def test_guardrail_streaming_masking_and_preemption():
     backend = DummyBackend()
-    agent = PyAgent(backend, system_prompt="test")
+    agent = Agent(backend, initial_state={"systemPrompt": "test"})
+    
+    # Mock active_run for testing abort() in isolation
+    from py_agent_core.agent import ActiveRun
+    from py_agent_core.agent_loop import AbortSignal
+    agent.active_run = ActiveRun(task=MagicMock(), abort_signal=AbortSignal())
     
     # 1. Test PII masking
     async def mock_stream_pii():
-        yield AgentEvent("text_delta", "Contact john")
-        yield AgentEvent("text_delta", "@example.com")
-        yield AgentEvent("text_delta", " now.")
-        yield AgentEvent("done", "Contact john@example.com now.")
+        yield MessageUpdateEvent(message={}, assistant_message_event={"type": "text_delta", "delta": "Contact john"})
+        yield MessageUpdateEvent(message={}, assistant_message_event={"type": "text_delta", "delta": "@example.com"})
+        yield MessageUpdateEvent(message={}, assistant_message_event={"type": "text_delta", "delta": " now."})
+        yield AgentEndEvent(messages=[{"role": "assistant", "content": "Contact john@example.com now."}])
         
     filtered_events = []
     async for event in guardrail_filter(mock_stream_pii(), agent):
         filtered_events.append(event)
         
-    text_deltas = "".join(e.content for e in filtered_events if e.type == "text_delta")
+    text_deltas = "".join(
+        e.assistant_message_event["delta"]
+        for e in filtered_events
+        if e.type == "message_update" and e.assistant_message_event.get("type") == "text_delta"
+    )
     assert "[REDACTED_EMAIL]" in text_deltas
     assert "john@example.com" not in text_deltas
-    
+
     # 2. Test preemption on blocked keyword
     async def mock_stream_blocked():
-        yield AgentEvent("text_delta", "Here is ")
-        yield AgentEvent("text_delta", "toxic_keyword")
-        yield AgentEvent("text_delta", " and more text.")
-        yield AgentEvent("done", "Here is toxic_keyword and more text.")
+        yield MessageUpdateEvent(message={}, assistant_message_event={"type": "text_delta", "delta": "Here is "})
+        yield MessageUpdateEvent(message={}, assistant_message_event={"type": "text_delta", "delta": "toxic_keyword"})
+        yield MessageUpdateEvent(message={}, assistant_message_event={"type": "text_delta", "delta": " and more text."})
+        yield AgentEndEvent(messages=[{"role": "assistant", "content": "Here is toxic_keyword and more text."}])
         
     filtered_events = []
     async for event in guardrail_filter(mock_stream_blocked(), agent):
         filtered_events.append(event)
         
-    assert agent._interrupted is True
+    assert agent.active_run.abort_signal.aborted is True
     interrupted_events = [e for e in filtered_events if e.type == "interrupted"]
     assert len(interrupted_events) == 1
-    assert "Blocked content detected" in interrupted_events[0].content
+    assert "Blocked content detected" in interrupted_events[0].reason
 
 @pytest.mark.asyncio
 async def test_agent_swarm_example():
@@ -145,4 +162,3 @@ async def test_self_healing_coder_example_and_tool():
 async def test_hello_agent_example():
     with patch("sys.argv", ["examples/hello_agent.py"]):
         await hello_main()
-

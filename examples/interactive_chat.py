@@ -8,40 +8,42 @@ from prompt_toolkit.widgets import TextArea
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.filters import Condition
 
-from py_agent_core import PyAgent, DummyBackend
+from py_agent_core import Agent, DummyBackend
 from examples.utils import get_backend_from_args
 
 # Global state to keep track of active agent and UI components
 active_agent = None
 
-async def run_agent_loop(prompt: str, agent: PyAgent, output_field: TextArea, status_control: FormattedTextControl, app: Application):
+async def run_agent_loop(prompt: str, agent: Agent, output_field: TextArea, status_control: FormattedTextControl, app: Application):
     global active_agent
     active_agent = agent
     status_control.text = "STATUS: Streaming (Press any key to interrupt)..."
     app.invalidate()
 
     output_field.text += f"\nUser: {prompt}\nAgent: "
-    output_field.scroll_to_bottom()
+    output_field.buffer.cursor_position = len(output_field.text)
     app.invalidate()
 
     try:
-        async for event in agent.run_loop(prompt):
-            if event.type == "text_delta":
-                output_field.text += event.content
-                output_field.scroll_to_bottom()
-                app.invalidate()
+        async for event in agent.prompt_stream(prompt):
+            if event.type == "message_update":
+                ev = getattr(event, "assistant_message_event", {})
+                if ev.get("type") == "text_delta":
+                    output_field.text += ev["delta"]
+                    output_field.buffer.cursor_position = len(output_field.text)
+                    app.invalidate()
             elif event.type == "interrupted":
-                output_field.text += f"\n[Interrupted: {event.content}]\n"
-                output_field.scroll_to_bottom()
+                output_field.text += f"\n[Interrupted: {event.reason}]\n"
+                output_field.buffer.cursor_position = len(output_field.text)
                 app.invalidate()
                 break
-            elif event.type == "done":
+            elif event.type == "agent_end":
                 output_field.text += "\n"
-                output_field.scroll_to_bottom()
+                output_field.buffer.cursor_position = len(output_field.text)
                 app.invalidate()
     except Exception as e:
         output_field.text += f"\nError: {e}\n"
-        output_field.scroll_to_bottom()
+        output_field.buffer.cursor_position = len(output_field.text)
         app.invalidate()
     finally:
         active_agent = None
@@ -64,7 +66,7 @@ def build_tui():
         )
         backend.chunk_delay = 0.08  # Slow chunk delay so interruption is easy to trigger
 
-    agent = PyAgent(backend, system_prompt="You are a helpful and detailed assistant.")
+    agent = Agent(backend, initial_state={"systemPrompt": "You are a helpful and detailed assistant."})
 
     # UI Widgets
     output_field = TextArea(read_only=True, scrollbar=True, focusable=False)
@@ -103,7 +105,7 @@ def build_tui():
     def _(event):
         global active_agent
         if active_agent:
-            active_agent.interrupt()
+            active_agent.abort()
 
     # 3. Quit
     @kb.add("c-c")

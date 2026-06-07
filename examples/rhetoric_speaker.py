@@ -1,6 +1,6 @@
 import asyncio
 import sys
-from py_agent_core import PyAgent, DummyBackend, AgentEvent
+from py_agent_core import Agent, DummyBackend
 from examples.utils import get_backend_from_args
 
 # Dummy text database for offline simulation
@@ -37,7 +37,7 @@ async def input_listener(agent_context: dict):
             if new_topic:
                 agent_context["pending_topic"] = new_topic
                 if agent_context["agent"]:
-                    agent_context["agent"].interrupt()
+                    agent_context["agent"].abort()
         except Exception:
             break
 
@@ -64,20 +64,24 @@ async def speaker_loop(agent_context: dict, backend, model: str):
                 f"Do not greet the user, just continue speaking. Maintain rhetorical continuity."
             )
             
-        # Instantiate a new PyAgent for this turn
-        agent = PyAgent(
+        # Instantiate a new Agent for this turn
+        agent = Agent(
             backend=backend,
-            system_prompt=f"You are a continuous rhetoric speaker talking about: {current_topic}. Generate short, elegant chunks."
+            initial_state={
+                "systemPrompt": f"You are a continuous rhetoric speaker talking about: {current_topic}. Generate short, elegant chunks."
+            }
         )
         if live_history:
-            agent.history = list(live_history)
+            agent.state.messages = list(live_history)
             
         agent_context["agent"] = agent
 
         interrupted = False
-        async for event in agent.run_loop(prompt):
-            if event.type == "text_delta":
-                print(event.content, end="", flush=True)
+        async for event in agent.prompt_stream(prompt):
+            if event.type == "message_update":
+                ev = getattr(event, "assistant_message_event", {})
+                if ev.get("type") == "text_delta":
+                    print(ev["delta"], end="", flush=True)
             elif event.type == "interrupted":
                 interrupted = True
                 break
@@ -100,7 +104,7 @@ async def speaker_loop(agent_context: dict, backend, model: str):
             live_history = [{"role": "system", "content": f"You are a speaker who just transitioned to {current_topic}."}]
         else:
             # Save history state for continuous generation on next turn
-            live_history = agent.history
+            live_history = agent.state.messages
             print(" ", end="", flush=True)
             await asyncio.sleep(1.5)
 
