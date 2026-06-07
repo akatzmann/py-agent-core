@@ -149,6 +149,15 @@ Since the runtime is lightweight and non-opinionated, you can run agents inside 
 
 We provide a comprehensive set of executable example scripts in the [examples/](examples/) directory. Each example can run completely offline out-of-the-box using the local `DummyBackend`. For full run commands and detailed walk-throughs, refer to the [Examples README](examples/README.md).
 
+### Agent Context Delegation
+- **Feed this prompt** to **Antigravity**, **Claude Code**, or **GitHub Copilot** to analyze the examples framework:
+
+```text
+Analyze the examples in this repository to build a mental model of how py-agent-core demonstrates cooperative preemption, sub-agent hierarchy, and stateful event interception:
+https://raw.githubusercontent.com/akatzmann/py-agent-core/main/examples/README.md
+```
+
+
 ### Fundamental Demos (Beginner)
 * **[Hello Agent](examples/hello_agent.py)**: Bare-minimum streaming and logging run.
 * **[Structured Streaming](examples/structured_streaming.py)**: Buffering and parsing structured JSON from token streams.
