@@ -5,6 +5,21 @@ This directory contains executable examples demonstrating the core features of `
 > [!TIP]
 > **For AI Coding Agents**: All examples support offline execution via the local `DummyBackend` adapter (requiring no API keys or internet access). You can test changes or verify example scripts by running the test suite (`pytest`).
 
+## Context Delegation for AI Coding Agents
+
+Your time is precious. Let your agent build the mental model for these examples.
+
+- **Feed this prompt** to **Antigravity**, **Claude Code**, **OpenClaw**, **OpenCode**, or **GitHub Copilot**.
+- Ask it to navigate and understand the examples directory before making any changes.
+
+```text
+Read examples/README.md in the py-agent-core repository and explain:
+1. What each example demonstrates and which py_agent_core features it exercises.
+2. The difference between fundamental and advanced examples.
+3. How minimal_coder.py differs from self_healing_coder.py in terms of complexity and goal.
+4. The pattern used for user-in-the-loop tool approval.
+```
+
 ---
 
 ## 1. Fundamental Examples
@@ -80,7 +95,7 @@ A simple demonstration of running the event loop, streaming raw tokens, and pars
 * **Core Concept**: Basic event consumption.
 * **Mechanism**: Runs the agent loop, prints the streaming `text_delta` tokens as they arrive, and consolidates the output on an `agent_end` event to parse it as standard JSON.
 
-### C. Search Watchdog (`search_watchdog.py`)
+### D. Search Watchdog (`search_watchdog.py`)
 
 Shows how to abort an agent's execution from an external task if a timeout is reached.
 
@@ -104,14 +119,14 @@ Shows how to abort an agent's execution from an external task if a timeout is re
 * **Core Concept**: Timeout-based cooperative preemption.
 * **Mechanism**: Spawns a background watchdog timer alongside the agent loop. If the agent's registered `slow_search` tool runs longer than the watchdog threshold (1s vs 3s), the watchdog calls `agent.abort()` to abort the runner immediately.
 
-### D. Rhetoric Speaker Monologue (`rhetoric_speaker.py`)
+### E. Rhetoric Speaker Monologue (`rhetoric_speaker.py`)
 
 Demonstrates how to interrupt an active speech monologue mid-generation using standard input.
 
 * **Core Concept**: User-initiated live preemption.
 * **Mechanism**: Runs an continuous monologue speaking loop. A background input listener reads `sys.stdin`. When the user types a new topic and hits Enter, the listener calls `agent.abort()` to abort the monologue, and the agent uses the new topic to continue speaking.
 
-### E. Hierarchical Assistant (`hierarchical_assistant.py`)
+### F. Hierarchical Assistant (`hierarchical_assistant.py`)
 
 Showcases how to build multi-agent hierarchies by running sub-agents inside standard Python tools.
 
@@ -132,21 +147,6 @@ Showcases how to build multi-agent hierarchies by running sub-agents inside stan
 * **Mechanism**: Defines `@tool` functions that instantiate and run specialized child sub-agents (a `code_writer` and a `code_reviewer`). The parent coordinator agent calls these tools sequentially to complete a coding request.
 
 ---
-
-## Context Delegation for AI Coding Agents
-
-Your time is precious. Let your agent build the mental model for these examples.
-
-- **Feed this prompt** to **Antigravity**, **Claude Code**, **OpenClaw**, **OpenCode**, or **GitHub Copilot**.
-- Ask it to navigate and understand the examples directory before making any changes.
-
-```text
-Read examples/README.md in the py-agent-core repository and explain:
-1. What each example demonstrates and which py_agent_core features it exercises.
-2. The difference between fundamental and advanced examples.
-3. How minimal_coder.py differs from self_healing_coder.py in terms of complexity and goal.
-4. The pattern used for user-in-the-loop tool approval.
-```
 
 ## 2. Advanced Examples
 
