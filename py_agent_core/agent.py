@@ -357,6 +357,7 @@ class Agent:
             prepare_next_turn=self.prepareNextTurn,
             get_steering_messages=lambda: self.steering_queue.drain(),
             get_follow_up_messages=lambda: self.follow_up_queue.drain(),
+            has_queued_messages=lambda: self.has_queued_messages(),
             tool_execution=self.tool_execution,
             before_tool_call=self.beforeToolCall,
             after_tool_call=self.afterToolCall

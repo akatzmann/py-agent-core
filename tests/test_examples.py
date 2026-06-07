@@ -20,6 +20,7 @@ from examples.guardrail_streaming import guardrail_filter
 from examples.agent_swarm import main as swarm_main
 from examples.self_healing_coder import main as coder_main, execute_python_code
 from examples.hello_agent import main as hello_main
+from examples.advanced_agent_features import main as advanced_main
 
 @pytest.mark.asyncio
 async def test_hierarchical_assistant_example():
@@ -162,3 +163,8 @@ async def test_self_healing_coder_example_and_tool():
 async def test_hello_agent_example():
     with patch("sys.argv", ["examples/hello_agent.py"]):
         await hello_main()
+
+@pytest.mark.asyncio
+async def test_advanced_features_example():
+    with patch("sys.argv", ["examples/advanced_agent_features.py", "--non-interactive", "--backend", "dummy"]):
+        await advanced_main()

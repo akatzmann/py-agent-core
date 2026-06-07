@@ -117,6 +117,7 @@ class AgentLoopConfig:
     prepare_next_turn: Optional[Callable[[Any], Optional[AgentLoopTurnUpdate]]] = None
     get_steering_messages: Optional[Callable[[], Any]] = None
     get_follow_up_messages: Optional[Callable[[], Any]] = None
+    has_queued_messages: Optional[Callable[[], bool]] = None
     tool_execution: str = "parallel"  # "parallel" or "sequential"
     before_tool_call: Optional[Callable[[Any, Optional[Any]], Any]] = None
     after_tool_call: Optional[Callable[[Any, Optional[Any]], Any]] = None
@@ -726,7 +727,11 @@ async def agent_loop_continue(
     if not context.messages:
         raise ValueError("Cannot continue: no messages in context")
     if context.messages[-1].get("role") == "assistant":
-        raise ValueError("Cannot continue from message role: assistant")
+        has_queued = False
+        if config.has_queued_messages:
+            has_queued = config.has_queued_messages()
+        if not has_queued:
+            raise ValueError("Cannot continue from message role: assistant")
         
     new_messages = []
     current_context = AgentContext(

@@ -145,6 +145,24 @@ backend = DummyBackend(lorem_text="hello world", chunk_delay=0.01)
 
 Since the runtime is lightweight and non-opinionated, you can run agents inside tool definitions to form hierarchical coordinator-worker patterns. See the full implementation in `examples/hierarchical_assistant.py`.
 
+## Examples Index & Demos
+
+We provide a comprehensive set of executable example scripts in the [examples/](examples/) directory. Each example can run completely offline out-of-the-box using the local `DummyBackend`. For full run commands and detailed walk-throughs, refer to the [Examples README](examples/README.md).
+
+### Fundamental Demos (Beginner)
+* **[Hello Agent](examples/hello_agent.py)**: Bare-minimum streaming and logging run.
+* **[Structured Streaming](examples/structured_streaming.py)**: Buffering and parsing structured JSON from token streams.
+* **[Search Watchdog](examples/search_watchdog.py)**: Cooperative preemption via an external watchdog timer/timeout.
+* **[Rhetoric Speaker](examples/rhetoric_speaker.py)**: Real-time user input preemption mid-monologue.
+* **[Hierarchical Assistant](examples/hierarchical_assistant.py)**: Running nested sub-agents within tools to construct coordinating agent trees.
+
+### Advanced Demos (Production)
+* **[Interactive TUI Chat](examples/interactive_chat.py)**: Full terminal TUI splitting user typing from token streams.
+* **[Streaming Guardrails](examples/guardrail_streaming.py)**: Stream middleware redacting PII and preempting on toxic words.
+* **[Parallel Agent Swarm](examples/agent_swarm.py)**: Running multiple independent agents concurrently.
+* **[Self-Healing Coder](examples/self_healing_coder.py)**: Subprocess code execution with iterative error-traceback correction.
+* **[Advanced Agent Features](examples/advanced_agent_features.py)**: Definitive showcase of subscriptions, before/after hooks, parallel tool execution, context pruning pipelines, and active steering queues.
+
 ---
 
 ## Running Tests

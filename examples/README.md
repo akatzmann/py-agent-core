@@ -208,6 +208,53 @@ An autonomous code writer that executes scripts in subprocesses and auto-correct
 * **Core Concept**: Code interpreter tool integration & context healing.
 * **Mechanism**: The agent is exposed to a Python subprocess runner tool. If execution fails, the traceback is returned to the agent's context, letting it inspect the syntax or runtime error and execute corrected code iteratively.
 
+### E. Advanced Agent Features (`advanced_agent_features.py`)
+
+A comprehensive showcase of stateful Agent configurations, telemetry subscriptions, interception hooks, parallel executions, custom pipelines, and queue steering.
+
+```text
+ ┌────────────────────────────────────────────────────────┐
+ │           ADVANCED AGENT FEATURES DEMO FLOW            │
+ └────────────────────────────────────────────────────────┘
+                              │
+                    1. Subscribe Callback
+                              ▼
+        ┌──────────────────────────────────────────┐
+        │  Event Listener Callback (Audit Logger)  │
+        └──────────────────────────────────────────┘
+                              │
+                    2. Prompt Execution
+                              ▼
+            ┌───────────────────────────────┐
+            │   LLM decides to call Tool    │
+            └───────────────┬───────────────┘
+                            │
+               3. Intercept via before_tool_call Hook
+                            ▼
+            ┌───────────────────────────────┐
+            │      Human Approval Gate      │
+            │ "Allow execute_command? [y/N]"│
+            └───────────────┬───────────────┘
+                            │
+                      ┌─────┴─────┐
+                   Yes│         No│
+                      ▼           ▼
+               ┌──────────┐   ┌──────────┐
+               │ Execute  │   │  Reject  │
+               │  Tool    │   │  & Abort │
+               └──────────┘   └──────────┘
+                              │
+              4. Active Steering / Follow-up Queues
+                              ▼
+            ┌───────────────────────────────┐
+            │   steer(): inject prompt      │
+            │   follow_up(): queue plan     │
+            └───────────────────────────────┘
+```
+
+* **Core Concept**: Comprehensive stateful Agent lifecycle orchestration.
+* **Mechanism**: Sets up decoupled console audit loggers via `.subscribe()`, hooks a terminal verification gate into `before_tool_call`, filters and terminates output in `after_tool_call`, parallelizes fetch queries in `tool_execution="parallel"`, rewrites and prunes message history in `convert_to_llm` / `transform_context`, and injects prompts dynamically mid-run and post-run via `steer()` and `follow_up()`.
+
 ---
 
 ## Running the Examples
@@ -226,6 +273,7 @@ python -m examples.interactive_chat
 python -m examples.guardrail_streaming
 python -m examples.agent_swarm
 python -m examples.self_healing_coder
+python -m examples.advanced_agent_features
 ```
 
 ### Running with a Local Model (Ollama)
