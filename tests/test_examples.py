@@ -21,6 +21,8 @@ from examples.agent_swarm import main as swarm_main
 from examples.self_healing_coder import main as coder_main, execute_python_code
 from examples.hello_agent import main as hello_main
 from examples.advanced_agent_features import main as advanced_main
+from examples.background_tool import main as background_main
+
 
 @pytest.mark.asyncio
 async def test_hierarchical_assistant_example():
@@ -168,3 +170,9 @@ async def test_hello_agent_example():
 async def test_advanced_features_example():
     with patch("sys.argv", ["examples/advanced_agent_features.py", "--non-interactive", "--backend", "dummy"]):
         await advanced_main()
+
+@pytest.mark.asyncio
+async def test_background_tool_example():
+    with patch("sys.argv", ["examples/background_tool.py"]):
+        await background_main()
+

@@ -1,9 +1,13 @@
 import asyncio
+import contextvars
 import inspect
 import time
 from dataclasses import dataclass, field
 from typing import Any, List, Dict, Optional, Set, Callable, Union, AsyncGenerator
 from py_agent_core.backends.base import BaseBackend
+
+# Context variable to track the active agent instance executing tools in the current task/thread
+_active_agent_ctx = contextvars.ContextVar("active_agent", default=None)
 from py_agent_core.agent_loop import (
     agent_loop,
     agent_loop_continue,
@@ -295,6 +299,7 @@ class Agent:
         loop_config.emit = event_sink
         
         async def run_task():
+            token = _active_agent_ctx.set(self)
             try:
                 await agent_loop(
                     prompts=prompts,
@@ -308,6 +313,7 @@ class Agent:
                 traceback.print_exc()
                 await queue.put(ErrorEvent(str(e)))
             finally:
+                _active_agent_ctx.reset(token)
                 await queue.put(None)
                 
         task = asyncio.create_task(run_task())
@@ -405,15 +411,17 @@ class Agent:
         self._state.streaming_message = None
         self._state.error_message = None
         
-        async def run_task():
-            await loop_executor(abort_signal)
-            
-        task = asyncio.create_task(run_task())
-        self.active_run = ActiveRun(task=task, abort_signal=abort_signal)
-        
+        token = _active_agent_ctx.set(self)
         try:
+            async def run_task():
+                await loop_executor(abort_signal)
+                
+            task = asyncio.create_task(run_task())
+            self.active_run = ActiveRun(task=task, abort_signal=abort_signal)
+            
             await task
         finally:
+            _active_agent_ctx.reset(token)
             self._finish_run()
 
     def _finish_run(self):

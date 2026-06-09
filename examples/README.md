@@ -146,6 +146,32 @@ Showcases how to build multi-agent hierarchies by running sub-agents inside stan
 * **Core Concept**: Nested execution loops (agents as tools).
 * **Mechanism**: Defines `@tool` functions that instantiate and run specialized child sub-agents (a `code_writer` and a `code_reviewer`). The parent coordinator agent calls these tools sequentially to complete a coding request.
 
+### G. Background Tool Execution (`background_tool.py`)
+
+Demonstrates how to declare and run long-running tools asynchronously in the background using the framework's native `execution_mode="background"`.
+
+```text
+               ┌────────────────────────┐
+               │   agent.prompt_stream  │
+               └───────────┬────────────┘
+                           │ (Tool execution returns status immediately)
+                           ▼
+               ┌────────────────────────┐
+               │ Agent continues loop   │ (Allows other turns or remains idle)
+               └────────────────────────┘
+                           │
+                           │ (Background task finished)
+                           ▼
+               ┌────────────────────────┐
+               │ agent.abort()          │ (Interrupts if active)
+               │ agent.steer(result)    │ (Injects the actual tool response)
+               │ agent.continue_()      │ (Resumes loop processing)
+               └────────────────────────┘
+```
+
+* **Core Concept**: Non-blocking tool execution & dynamic agent steering.
+* **Mechanism**: Defines a tool using `@tool(execution_mode="background")`. When invoked, the tool starts a background asyncio task and returns a status string immediately. The agent goes idle. When the background task completes, it dynamically retrieves the `tool_call_id` from history, interrupts/steers the agent with the actual results, and triggers agent loop continuation.
+
 ---
 
 ## 2. Advanced Examples
@@ -313,6 +339,7 @@ python -m examples.structured_streaming
 python -m examples.search_watchdog
 python -m examples.rhetoric_speaker
 python -m examples.hierarchical_assistant
+python -m examples.background_tool
 python -m examples.interactive_chat
 python -m examples.guardrail_streaming
 python -m examples.agent_swarm

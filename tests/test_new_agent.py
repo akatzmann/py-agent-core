@@ -357,3 +357,59 @@ async def test_turn_transition_hooks():
     # Wait, the history will have the tool result
     tool_results = [m for m in agent.state.messages if m.get("role") == "toolResult"]
     assert len(tool_results) == 1
+
+@pytest.mark.asyncio
+async def test_agent_background_tool_execution():
+    background_task_run = False
+    
+    @tool(execution_mode="background")
+    async def bg_tool(delay: float = 0.05) -> str:
+        nonlocal background_task_run
+        await asyncio.sleep(delay)
+        background_task_run = True
+        return "background work finished"
+        
+    backend = DummyBackend(chunk_delay=0.0)
+    agent = Agent(backend=backend, initial_state={"tools": [bg_tool]})
+    
+    from py_agent_core.backends.base import BackendChunk, ToolCallChunk
+    
+    async def mock_generate_stream(messages, tools=None):
+        # Look for the background result in message history
+        bg_finished = False
+        for m in messages:
+            if m.get("role") in ("tool", "toolResult"):
+                content = str(m.get("content", ""))
+                if "background work finished" in content:
+                    bg_finished = True
+                    break
+        
+        if not any(m.get("role") in ("tool", "toolResult") for m in messages):
+            yield BackendChunk(tool_calls=[
+                ToolCallChunk(index=0, id="c-bg-1", name="bg_tool", arguments='{"delay": 0.05}')
+            ])
+        elif bg_finished:
+            yield BackendChunk(text="Report compiled with background work finished.")
+        else:
+            yield BackendChunk(text="Placeholder turn before completion.")
+            
+    backend.generate_stream = mock_generate_stream
+    
+    # Trigger the prompt stream
+    async for event in agent.prompt_stream("trigger bg tool"):
+        pass
+        
+    # Wait for the background task to complete and steer the agent
+    await asyncio.sleep(0.15)
+    
+    # Now let's wait for agent to idle/settle since continue_ was called
+    await agent.wait_for_idle()
+    
+    # Verify the background task executed
+    assert background_task_run is True
+    
+    # Verify that the final response contains the results from the background tool
+    history_contents = [str(m.get("content", "")) for m in agent.state.messages]
+    assert any("background work finished" in c for c in history_contents)
+    assert any("Report compiled with" in c for c in history_contents)
+
