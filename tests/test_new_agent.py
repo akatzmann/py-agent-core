@@ -16,7 +16,9 @@ from py_agent_core import (
     ToolExecutionStartEvent,
     ToolExecutionEndEvent,
     InterruptedEvent,
-    ErrorEvent
+    ErrorEvent,
+    BaseBackend,
+    BackendChunk
 )
 
 @pytest.mark.asyncio
@@ -412,4 +414,97 @@ async def test_agent_background_tool_execution():
     history_contents = [str(m.get("content", "")) for m in agent.state.messages]
     assert any("background work finished" in c for c in history_contents)
     assert any("Report compiled with" in c for c in history_contents)
+
+
+class ErrorBackend(BaseBackend):
+    async def generate_stream(self, messages, tools=None):
+        raise ValueError("Cannot connect to LLM endpoint!")
+        yield BackendChunk(text="Never reached")
+
+
+@pytest.mark.asyncio
+async def test_agent_backend_error_propagation():
+    from py_agent_core.backends.base import BaseBackend, BackendChunk
+    from py_agent_core.agent import PyAgent
+
+    backend = ErrorBackend()
+    agent = Agent(backend=backend)
+    
+    # 1. Test Agent.prompt raises the exception
+    with pytest.raises(ValueError, match="Cannot connect to LLM endpoint!"):
+        await agent.prompt("hello")
+        
+    # 2. Test Agent.prompt_stream raises the exception
+    events = []
+    with pytest.raises(ValueError, match="Cannot connect to LLM endpoint!"):
+        async for event in agent.prompt_stream("hello"):
+            events.append(event)
+            
+    # Verify that subscribers/stream still got the ErrorEvent
+    assert any(getattr(e, "type", None) == "error" for e in events)
+    
+    # 3. Test legacy PyAgent.run_loop yields error and does not raise
+    legacy_agent = PyAgent(backend=backend, system_prompt="helper")
+    legacy_events = []
+    try:
+        async for event in legacy_agent.run_loop("hello"):
+            legacy_events.append(event)
+    except Exception as e:
+        pytest.fail(f"legacy PyAgent.run_loop raised exception: {e}")
+        
+    assert len(legacy_events) > 0
+    assert legacy_events[-1].type == "error"
+    assert "Cannot connect to LLM endpoint!" in legacy_events[-1].content
+
+
+@pytest.mark.asyncio
+async def test_agent_thinking_propagation_and_events():
+    received_options = None
+    
+    class ThinkingBackend(BaseBackend):
+        async def generate_stream(self, messages, tools=None, options=None):
+            nonlocal received_options
+            received_options = options
+            yield BackendChunk(thinking="Thinking step...")
+            await asyncio.sleep(0.01)
+            yield BackendChunk(text="Final result.")
+
+    backend = ThinkingBackend()
+    agent = Agent(backend=backend, initial_state={"thinkingLevel": "high"})
+    
+    events = []
+    def listener(event, signal):
+        events.append(event)
+    agent.subscribe(listener)
+    
+    async for _ in agent.prompt_stream("Solve task"):
+        pass
+        
+    # 1. Verify thinking level options propagated to generate_stream
+    assert received_options == {"thinking_level": "high"}
+    
+    # 2. Verify events: we should have thinking_delta type message_update events
+    update_events = [e for e in events if e.type == "message_update"]
+    assert len(update_events) >= 2
+    
+    thinking_deltas = [
+        ev["delta"] for e in update_events 
+        for ev in [getattr(e, "assistant_message_event", {})] 
+        if ev.get("type") == "thinking_delta"
+    ]
+    assert "Thinking step..." in thinking_deltas
+    
+    text_deltas = [
+        ev["delta"] for e in update_events 
+        for ev in [getattr(e, "assistant_message_event", {})] 
+        if ev.get("type") == "text_delta"
+    ]
+    assert "Final result." in text_deltas
+    
+    # 3. Verify history message contains content and thinking trace
+    assistant_msgs = [m for m in agent.state.messages if m.get("role") == "assistant"]
+    assert len(assistant_msgs) == 1
+    assert assistant_msgs[0]["content"] == "Final result."
+    assert assistant_msgs[0]["thinking"] == "Thinking step..."
+
 

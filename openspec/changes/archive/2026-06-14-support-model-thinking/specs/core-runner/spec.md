@@ -1,8 +1,5 @@
-# core-runner Specification
+## MODIFIED Requirements
 
-## Purpose
-TBD - created by archiving change system. Update Purpose after archive.
-## Requirements
 ### Requirement: Async Execution Loop
 The system SHALL run an asynchronous execution loop that manages the conversation flow of system prompt, user prompt, LLM completion, and tool execution, supporting both a low-level functional stream (`agent_loop`) and a high-level stateful `Agent` wrapper class.
 
@@ -14,32 +11,9 @@ The system SHALL run an asynchronous execution loop that manages the conversatio
 - **WHEN** the runner executes with a prompt and registered tools, and the LLM requests tool calls
 - **THEN** it SHALL yield `tool_execution_start` and `tool_execution_end` events, execute the tool calls, feed the outputs back into the conversation history, and continue the execution loop.
 
-#### Scenario: Backend failure in execution loop
-- **WHEN** the LLM backend generation fails or raises an error during execution
-- **THEN** it SHALL emit an `error` event and propagate the exception to the caller of `agent_loop` or `Agent.prompt`.
-
-#### Scenario: Backend failure in streaming execution
-- **WHEN** the LLM backend generation fails or raises an error during a streaming prompt invocation (`Agent.prompt_stream`)
-- **THEN** it SHALL emit an `error` event, yield it, and propagate the exception to the generator's caller.
-
-#### Scenario: Backend failure in legacy wrapper
-- **WHEN** backend generation fails when executing via the legacy `PyAgent.run_loop` wrapper
-- **THEN** it SHALL yield a legacy `error` event without raising the exception to the caller.
-
 #### Scenario: Execution with model thinking enabled
 - **WHEN** the runner executes with model thinking enabled
 - **THEN** it SHALL propagate the thinking level, yield `message_update` events of type `thinking_delta`, and accumulate the reasoning trace in the assistant's message dictionary under the `thinking` key.
-
-### Requirement: Cooperative Interruption
-The system SHALL support cooperative interruption during both token streaming and tool execution phases by supporting an `abort()` method on the high-level `Agent` class and a cancellation signal in the low-level loop.
-
-#### Scenario: Interrupted during token streaming
-- **WHEN** the abort signal or interrupt method is invoked while the runner is consuming LLM streaming tokens
-- **THEN** the runner SHALL close the underlying response stream immediately, yield `interrupted`, and terminate execution.
-
-#### Scenario: Interrupted before tool execution
-- **WHEN** the abort signal is set after a tool call is parsed but before execution begins
-- **THEN** the runner SHALL bypass execution of the tool, yield `interrupted`, and terminate execution.
 
 ### Requirement: Turn Transition Controls
 The system SHALL support dynamic turn transition hooks (`prepare_next_turn` and `should_stop_after_turn`) to customize configuration or stop execution between execution turns.
@@ -51,4 +25,3 @@ The system SHALL support dynamic turn transition hooks (`prepare_next_turn` and 
 #### Scenario: Stop after turn
 - **WHEN** `should_stop_after_turn` returns true
 - **THEN** the system SHALL immediately terminate the run and yield `agent_end` before starting another turn.
-

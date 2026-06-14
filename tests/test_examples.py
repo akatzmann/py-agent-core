@@ -22,6 +22,7 @@ from examples.self_healing_coder import main as coder_main, execute_python_code
 from examples.hello_agent import main as hello_main
 from examples.advanced_agent_features import main as advanced_main
 from examples.background_tool import main as background_main
+from examples.minimal_coder import main as minimal_main, run_python_code
 
 
 @pytest.mark.asyncio
@@ -176,3 +177,21 @@ async def test_background_tool_example():
     with patch("sys.argv", ["examples/background_tool.py"]):
         await background_main()
 
+
+@pytest.mark.asyncio
+async def test_minimal_coder_tool():
+    with patch("builtins.input", return_value="y"):
+        res = await run_python_code("print('Hello minimal coder')")
+        assert "Output:" in res
+        assert "Hello minimal coder" in res
+        
+    with patch("builtins.input", return_value="n"):
+        res = await run_python_code("print('Hello minimal coder')")
+        assert "User declined execution." in res
+
+
+@pytest.mark.asyncio
+async def test_minimal_coder_example():
+    with patch("sys.argv", ["examples/minimal_coder.py", "--backend", "dummy"]), \
+         patch("builtins.input", side_effect=["What is 2+2?", "y"]):
+        await minimal_main()

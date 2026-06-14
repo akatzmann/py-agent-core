@@ -19,6 +19,7 @@ class DummyBackend(BaseBackend):
         self,
         messages: List[Dict[str, Any]],
         tools: Optional[List[Dict[str, Any]]] = None,
+        options: Optional[Dict[str, Any]] = None,
     ) -> AsyncGenerator[BackendChunk, None]:
         # Get the last user message content
         last_user_msg = ""

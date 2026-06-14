@@ -118,4 +118,60 @@ async def test_ollama_backend_robust_argument_parsing():
         pass
 
 
+@pytest.mark.asyncio
+async def test_ollama_backend_thinking_and_options():
+    mock_client = MagicMock()
+    chat_kwargs = {}
+    
+    async def mock_chat_stream(*args, **kwargs):
+        nonlocal chat_kwargs
+        chat_kwargs = kwargs
+        
+        async def stream_gen():
+            yield {
+                "message": {
+                    "role": "assistant",
+                    "content": "",
+                    "thinking": "Reasoning trace..."
+                }
+            }
+            yield {
+                "message": {
+                    "role": "assistant",
+                    "content": "Final answer.",
+                    "thinking": ""
+                }
+            }
+        return stream_gen()
+        
+    mock_client.chat = AsyncMock(side_effect=mock_chat_stream)
+    
+    backend = OllamaBackend(client=mock_client, model="deepseek-r1")
+    
+    messages = [
+        {"role": "user", "content": "solve this"},
+        {"role": "assistant", "content": "I am thinking", "thinking": "old trace"}
+    ]
+    
+    chunks = []
+    async for chunk in backend.generate_stream(messages, options={"thinking_level": "high"}):
+        chunks.append(chunk)
+        
+    # 1. Verify think option was passed
+    assert chat_kwargs.get("think") is True
+    
+    # 2. Verify previous thinking trace was stripped from history sent to client
+    sent_messages = chat_kwargs.get("messages", [])
+    assert len(sent_messages) == 2
+    assert "thinking" not in sent_messages[1]
+    
+    # 3. Verify chunk results
+    assert len(chunks) == 2
+    assert chunks[0].thinking == "Reasoning trace..."
+    assert chunks[0].text is None
+    assert chunks[1].thinking is None
+    assert chunks[1].text == "Final answer."
+
+
+
 

@@ -12,6 +12,7 @@ class ToolCallChunk:
 @dataclass
 class BackendChunk:
     text: Optional[str] = None
+    thinking: Optional[str] = None
     tool_calls: Optional[List[ToolCallChunk]] = None
 
 class BaseBackend(ABC):
@@ -22,6 +23,7 @@ class BaseBackend(ABC):
         self,
         messages: List[Dict[str, Any]],
         tools: Optional[List[Dict[str, Any]]] = None,
+        options: Optional[Dict[str, Any]] = None,
     ) -> AsyncGenerator[BackendChunk, None]:
         """Requests a chat completion with streaming, yielding BackendChunks."""
         pass

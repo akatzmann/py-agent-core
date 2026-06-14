@@ -1,7 +1,10 @@
 import json
+import logging
 from typing import AsyncGenerator, List, Dict, Any, Optional
 from ollama import AsyncClient
 from py_agent_core.backends.base import BaseBackend, BackendChunk, ToolCallChunk
+
+logger = logging.getLogger(__name__)
 
 class OllamaBackend(BaseBackend):
     """Adapter for local Ollama service instances."""
@@ -19,11 +22,16 @@ class OllamaBackend(BaseBackend):
         self,
         messages: List[Dict[str, Any]],
         tools: Optional[List[Dict[str, Any]]] = None,
+        options: Optional[Dict[str, Any]] = None,
     ) -> AsyncGenerator[BackendChunk, None]:
         # Ollama SDK expects tool call arguments to be pre-parsed dictionaries rather than JSON strings
         formatted_messages = []
         for msg in messages:
             new_msg = dict(msg)
+            # Sanitize thinking traces from message history before requesting completion
+            if "thinking" in new_msg:
+                del new_msg["thinking"]
+                
             if "tool_calls" in new_msg and new_msg["tool_calls"]:
                 formatted_tool_calls = []
                 for tc in new_msg["tool_calls"]:
@@ -51,6 +59,20 @@ class OllamaBackend(BaseBackend):
         if tools:
             kwargs["tools"] = tools
 
+        if options and "thinking_level" in options:
+            thinking_level = options["thinking_level"]
+            if thinking_level != "off":
+                kwargs["think"] = True
+                model_lower = self.model.lower()
+                if not any(k in model_lower for k in ("r1", "think", "reasoning", "cot")):
+                    logger.warning(
+                        "Thinking level '%s' enabled for model '%s', but the model may not natively support reasoning. "
+                        "Only models specifically trained for chain-of-thought (e.g. deepseek-r1) support thinking options.",
+                        thinking_level, self.model
+                    )
+            else:
+                kwargs["think"] = False
+
         response_stream = await self.client.chat(
             model=self.model,
             messages=formatted_messages,
@@ -62,6 +84,7 @@ class OllamaBackend(BaseBackend):
             async for chunk in response_stream:
                 message = chunk.get("message", {})
                 text_delta = message.get("content", "")
+                thinking_delta = message.get("thinking", "")
                 
                 tool_calls = None
                 raw_tool_calls = message.get("tool_calls")
@@ -80,7 +103,11 @@ class OllamaBackend(BaseBackend):
                             arguments=args
                         ))
                         
-                yield BackendChunk(text=text_delta, tool_calls=tool_calls)
+                yield BackendChunk(
+                    text=text_delta or None,
+                    thinking=thinking_delta or None,
+                    tool_calls=tool_calls
+                )
         except GeneratorExit:
             # Gracefully handle preemption to prevent asyncio generator cleanup warnings
             return

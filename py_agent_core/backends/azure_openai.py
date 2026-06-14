@@ -18,14 +18,46 @@ class AzureOpenAIBackend(BaseBackend):
         self,
         messages: List[Dict[str, Any]],
         tools: Optional[List[Dict[str, Any]]] = None,
+        options: Optional[Dict[str, Any]] = None,
     ) -> AsyncGenerator[BackendChunk, None]:
+        # Sanitize messages to prevent OpenAI SDK schema validation errors
+        clean_messages = []
+        for msg in messages:
+            clean_msg = {
+                "role": msg.get("role"),
+                "content": msg.get("content"),
+            }
+            if "tool_calls" in msg:
+                clean_msg["tool_calls"] = msg["tool_calls"]
+            if "tool_call_id" in msg:
+                clean_msg["tool_call_id"] = msg["tool_call_id"]
+            if "name" in msg:
+                clean_msg["name"] = msg["name"]
+            clean_messages.append(clean_msg)
+
         kwargs = {}
         if tools:
             kwargs["tools"] = tools
 
+        if options and "thinking_level" in options:
+            thinking_level = options["thinking_level"]
+            if thinking_level != "off":
+                model_lower = self.model.lower()
+                if "o1" in model_lower or "o3" in model_lower:
+                    if thinking_level in ("low", "medium", "high"):
+                        kwargs["reasoning_effort"] = thinking_level
+                else:
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.warning(
+                        "Thinking level '%s' requested, but model '%s' may not support reasoning_effort. "
+                        "Only OpenAI o1/o3-mini models support reasoning_effort.",
+                        thinking_level, self.model
+                    )
+
         response_stream = await self.client.chat.completions.create(
             model=self.model,
-            messages=messages,
+            messages=clean_messages,
             stream=True,
             **kwargs
         )

@@ -111,6 +111,7 @@ class AgentLoopConfig:
     model: Any
     convert_to_llm: Callable[[List[Dict[str, Any]]], Union[List[Dict[str, Any]], Any]]
     emit: Callable[[AgentEvent], Any]
+    thinking_level: str = "off"
     transform_context: Optional[Callable[[List[Dict[str, Any]], Optional[Any]], Any]] = None
     get_api_key: Optional[Callable[[str], Optional[str]]] = None
     should_stop_after_turn: Optional[Callable[[Any], Any]] = None
@@ -561,9 +562,20 @@ async def run_loop(
             tool_definitions = [t.definition for t in current_context.tools] if current_context.tools else None
             
             # Request streaming LLM completion
-            generator = backend.generate_stream(llm_messages, tools=tool_definitions)
+            sig = inspect.signature(backend.generate_stream)
+            if "options" in sig.parameters:
+                generator = backend.generate_stream(
+                    llm_messages,
+                    tools=tool_definitions,
+                    options={"thinking_level": config.thinking_level}
+                )
+            else:
+                generator = backend.generate_stream(
+                    llm_messages,
+                    tools=tool_definitions
+                )
             
-            assistant_message = {"role": "assistant", "content": "", "tool_calls": []}
+            assistant_message = {"role": "assistant", "content": "", "thinking": "", "tool_calls": []}
             await call_maybe_async(emit, MessageStartEvent(assistant_message))
             
             accumulated_tool_calls = {}
@@ -576,6 +588,13 @@ async def run_loop(
                         interrupted = True
                         break
                         
+                    if getattr(chunk, "thinking", None):
+                        assistant_message["thinking"] += chunk.thinking
+                        await call_maybe_async(emit, MessageUpdateEvent(
+                            message=assistant_message,
+                            assistant_message_event={"type": "thinking_delta", "delta": chunk.thinking}
+                        ))
+
                     if chunk.text:
                         assistant_message["content"] += chunk.text
                         await call_maybe_async(emit, MessageUpdateEvent(
@@ -607,7 +626,7 @@ async def run_loop(
                             ))
             except Exception as e:
                 await call_maybe_async(emit, ErrorEvent(str(e)))
-                return
+                raise
             finally:
                 if hasattr(generator, "aclose"):
                     await generator.aclose()
@@ -664,6 +683,20 @@ async def run_loop(
                         current_context = next_turn_update.context
                     elif isinstance(next_turn_update, dict) and "context" in next_turn_update:
                         current_context = next_turn_update["context"]
+                        
+                    # Apply updated model/backend
+                    next_model = getattr(next_turn_update, "model", None)
+                    if not next_model and isinstance(next_turn_update, dict):
+                        next_model = next_turn_update.get("model")
+                    if next_model:
+                        backend = next_model
+                        
+                    # Apply updated thinking level
+                    next_thinking = getattr(next_turn_update, "thinking_level", None)
+                    if not next_thinking and isinstance(next_turn_update, dict):
+                        next_thinking = next_turn_update.get("thinking_level")
+                    if next_thinking:
+                        config.thinking_level = next_thinking
                         
             # shouldStopAfterTurn hook
             if config.should_stop_after_turn:

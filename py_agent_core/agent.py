@@ -312,6 +312,7 @@ class Agent:
                 import traceback
                 traceback.print_exc()
                 await queue.put(ErrorEvent(str(e)))
+                raise e
             finally:
                 _active_agent_ctx.reset(token)
                 await queue.put(None)
@@ -328,6 +329,7 @@ class Agent:
                 # Feed state reductions and notify subscribers
                 await self._process_events(event)
                 yield event
+            await task
         finally:
             self._finish_run()
 
@@ -355,6 +357,7 @@ class Agent:
         emit_func = custom_emit or (lambda e: self._process_events(e))
         return AgentLoopConfig(
             model=self._state.model,
+            thinking_level=self._state.thinking_level,
             convert_to_llm=self.convertToLlm,
             emit=emit_func,
             transform_context=self.transformContext,
@@ -472,35 +475,40 @@ class PyAgent:
     async def run_loop(self, user_prompt: str) -> AsyncGenerator[LegacyAgentEvent, None]:
         """Runs the execution turn yielding legacy AgentEvent compatibility objects."""
         self._agent_interrupted = False
-        async for event in self._agent.prompt_stream(user_prompt):
-            if event.type == "message_update":
-                ev = getattr(event, "assistant_message_event", {})
-                if ev.get("type") == "text_delta":
-                    yield LegacyAgentEvent(type="text_delta", content=ev["delta"])
-            elif event.type == "tool_execution_start":
-                yield LegacyAgentEvent(type="tool_start", content=getattr(event, "tool_name", ""))
-            elif event.type == "tool_execution_end":
-                tname = getattr(event, "tool_name", "")
-                res = getattr(event, "result", {})
-                
-                # Extract text block content
-                res_content = res.get("content", [{"type": "text", "text": ""}])
-                res_str = ""
-                if isinstance(res_content, list) and len(res_content) > 0:
-                    res_str = res_content[0].get("text", "")
-                else:
-                    res_str = str(res_content)
+        try:
+            async for event in self._agent.prompt_stream(user_prompt):
+                if event.type == "message_update":
+                    ev = getattr(event, "assistant_message_event", {})
+                    if ev.get("type") == "text_delta":
+                        yield LegacyAgentEvent(type="text_delta", content=ev["delta"])
+                elif event.type == "tool_execution_start":
+                    yield LegacyAgentEvent(type="tool_start", content=getattr(event, "tool_name", ""))
+                elif event.type == "tool_execution_end":
+                    tname = getattr(event, "tool_name", "")
+                    res = getattr(event, "result", {})
                     
-                yield LegacyAgentEvent(type="tool_end", content={"tool": tname, "result": res_str})
-            elif event.type == "interrupted":
-                yield LegacyAgentEvent(type="interrupted", content=getattr(event, "reason", "Interrupted."))
-            elif event.type == "error":
-                yield LegacyAgentEvent(type="error", content=getattr(event, "error", "Error occurred."))
-            elif event.type == "agent_end":
-                # Find last assistant content
-                assistant_content = ""
-                for msg in reversed(self._agent.state.messages):
-                    if msg.get("role") == "assistant":
-                        assistant_content = msg.get("content") or ""
-                        break
-                yield LegacyAgentEvent(type="done", content=assistant_content)
+                    # Extract text block content
+                    res_content = res.get("content", [{"type": "text", "text": ""}])
+                    res_str = ""
+                    if isinstance(res_content, list) and len(res_content) > 0:
+                        res_str = res_content[0].get("text", "")
+                    else:
+                        res_str = str(res_content)
+                        
+                    yield LegacyAgentEvent(type="tool_end", content={"tool": tname, "result": res_str})
+                elif event.type == "interrupted":
+                    yield LegacyAgentEvent(type="interrupted", content=getattr(event, "reason", "Interrupted."))
+                elif event.type == "error":
+                    # Ignore the yielded ErrorEvent here because we will catch the propagated exception
+                    # in the except block below and yield a single legacy error event for it.
+                    pass
+                elif event.type == "agent_end":
+                    # Find last assistant content
+                    assistant_content = ""
+                    for msg in reversed(self._agent.state.messages):
+                        if msg.get("role") == "assistant":
+                            assistant_content = msg.get("content") or ""
+                            break
+                    yield LegacyAgentEvent(type="done", content=assistant_content)
+        except Exception as e:
+            yield LegacyAgentEvent(type="error", content=str(e))
