@@ -2,6 +2,7 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock
 from py_agent_core.backends.dummy import DummyBackend
 from py_agent_core.backends.ollama import OllamaBackend
+from py_agent_core.backends.openai import OpenAIBackend
 
 @pytest.mark.asyncio
 async def test_dummy_backend_text():
@@ -171,6 +172,109 @@ async def test_ollama_backend_thinking_and_options():
     assert chunks[0].text is None
     assert chunks[1].thinking is None
     assert chunks[1].text == "Final answer."
+
+
+@pytest.mark.asyncio
+async def test_openai_backend_thinking_and_options():
+    mock_client = MagicMock()
+    create_kwargs = {}
+    
+    # Mock choices with delta content and reasoning_content
+    mock_choice_1 = MagicMock()
+    mock_choice_1.delta = MagicMock(content=None, reasoning_content="Thinking trace...", tool_calls=None)
+    mock_chunk_1 = MagicMock(choices=[mock_choice_1])
+    
+    mock_choice_2 = MagicMock()
+    mock_choice_2.delta = MagicMock(content="Final answer.", reasoning_content=None, tool_calls=None)
+    mock_chunk_2 = MagicMock(choices=[mock_choice_2])
+
+    class MockStream:
+        def __init__(self, items):
+            self.items = items
+        def __aiter__(self):
+            return self
+        async def __anext__(self):
+            if not self.items:
+                raise StopAsyncIteration
+            return self.items.pop(0)
+        async def close(self):
+            pass
+
+    async def mock_create(*args, **kwargs):
+        nonlocal create_kwargs
+        create_kwargs = kwargs
+        return MockStream([mock_chunk_1, mock_chunk_2])
+        
+    mock_client.chat = MagicMock()
+    mock_client.chat.completions = MagicMock()
+    mock_client.chat.completions.create = AsyncMock(side_effect=mock_create)
+    
+    backend = OpenAIBackend(client=mock_client, model="o1-mini")
+    
+    messages = [
+        {"role": "user", "content": "solve this"},
+        {"role": "assistant", "content": "I am thinking", "thinking": "old trace"}
+    ]
+    
+    chunks = []
+    async for chunk in backend.generate_stream(messages, options={"thinking_level": "medium"}):
+        chunks.append(chunk)
+        
+    # 1. Verify reasoning_effort option was passed
+    assert create_kwargs.get("reasoning_effort") == "medium"
+    
+    # 2. Verify previous thinking trace was stripped from history sent to client (via sanitization)
+    sent_messages = create_kwargs.get("messages", [])
+    assert len(sent_messages) == 2
+    assert "thinking" not in sent_messages[1]
+    
+    # 3. Verify chunk results
+    assert len(chunks) == 2
+    assert chunks[0].thinking == "Thinking trace..."
+    assert chunks[0].text is None
+    assert chunks[1].thinking is None
+    assert chunks[1].text == "Final answer."
+
+
+@pytest.mark.asyncio
+async def test_openai_backend_non_reasoning_model():
+    mock_client = MagicMock()
+    create_kwargs = {}
+    
+    mock_choice = MagicMock()
+    mock_choice.delta = MagicMock(content="Hello", reasoning_content=None, tool_calls=None)
+    mock_chunk = MagicMock(choices=[mock_choice])
+
+    class MockStream:
+        def __init__(self, items):
+            self.items = items
+        def __aiter__(self):
+            return self
+        async def __anext__(self):
+            if not self.items:
+                raise StopAsyncIteration
+            return self.items.pop(0)
+        async def close(self):
+            pass
+
+    async def mock_create(*args, **kwargs):
+        nonlocal create_kwargs
+        create_kwargs = kwargs
+        return MockStream([mock_chunk])
+        
+    mock_client.chat = MagicMock()
+    mock_client.chat.completions = MagicMock()
+    mock_client.chat.completions.create = AsyncMock(side_effect=mock_create)
+    
+    backend = OpenAIBackend(client=mock_client, model="gpt-4o")
+    messages = [{"role": "user", "content": "hello"}]
+    
+    chunks = []
+    async for chunk in backend.generate_stream(messages, options={"thinking_level": "medium"}):
+        chunks.append(chunk)
+        
+    assert "reasoning_effort" not in create_kwargs
+    assert chunks[0].text == "Hello"
 
 
 

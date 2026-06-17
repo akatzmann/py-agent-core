@@ -9,6 +9,7 @@ from examples.utils import get_backend_from_args
 from py_agent_core import (
     OllamaBackend,
     AzureOpenAIBackend,
+    OpenAIBackend,
     DummyBackend,
     Agent,
     MessageUpdateEvent,
@@ -28,17 +29,17 @@ from examples.minimal_coder import main as minimal_main, run_python_code
 @pytest.mark.asyncio
 async def test_hierarchical_assistant_example():
     # Patch argv to run as default offline dummy backend
-    with patch("sys.argv", ["examples/hierarchical_assistant.py"]):
+    with patch("sys.argv", ["examples/hierarchical_assistant.py", "--backend", "dummy"]):
         await assistant_main()
 
 @pytest.mark.asyncio
 async def test_search_watchdog_example():
-    with patch("sys.argv", ["examples/search_watchdog.py"]):
+    with patch("sys.argv", ["examples/search_watchdog.py", "--backend", "dummy"]):
         await watchdog_main()
 
 @pytest.mark.asyncio
 async def test_structured_streaming_example():
-    with patch("sys.argv", ["examples/structured_streaming.py"]):
+    with patch("sys.argv", ["examples/structured_streaming.py", "--backend", "dummy"]):
         await structured_main()
 
 @pytest.mark.asyncio
@@ -89,9 +90,23 @@ def test_cli_backend_parsing_dummy():
         backend, model = get_backend_from_args()
         assert isinstance(backend, DummyBackend)
 
+def test_cli_backend_parsing_openai():
+    test_args = ["prog_name", "--backend", "openai", "--model", "gpt-4o"]
+    with patch("sys.argv", test_args):
+        backend, model = get_backend_from_args()
+        assert isinstance(backend, OpenAIBackend)
+        assert model == "gpt-4o"
+
+def test_cli_backend_parsing_default():
+    test_args = ["prog_name"]
+    with patch("sys.argv", test_args):
+        backend, model = get_backend_from_args()
+        assert isinstance(backend, OpenAIBackend)
+        assert model == "gpt-4o"
+
 @pytest.mark.asyncio
 async def test_interactive_chat_tui_build():
-    with patch("sys.argv", ["examples/interactive_chat.py"]):
+    with patch("sys.argv", ["examples/interactive_chat.py", "--backend", "dummy"]):
         app = build_tui()
         assert app is not None
         assert app.layout is not None
@@ -143,7 +158,7 @@ async def test_guardrail_streaming_masking_and_preemption():
 
 @pytest.mark.asyncio
 async def test_agent_swarm_example():
-    with patch("sys.argv", ["examples/agent_swarm.py"]):
+    with patch("sys.argv", ["examples/agent_swarm.py", "--backend", "dummy"]):
         await swarm_main()
 
 @pytest.mark.asyncio
@@ -159,12 +174,12 @@ async def test_self_healing_coder_example_and_tool():
     assert "Traceback" in res_fail or "Error" in res_fail
     
     # Run full self-healing main demo
-    with patch("sys.argv", ["examples/self_healing_coder.py"]):
+    with patch("sys.argv", ["examples/self_healing_coder.py", "--backend", "dummy"]):
         await coder_main()
 
 @pytest.mark.asyncio
 async def test_hello_agent_example():
-    with patch("sys.argv", ["examples/hello_agent.py"]):
+    with patch("sys.argv", ["examples/hello_agent.py", "--backend", "dummy"]):
         await hello_main()
 
 @pytest.mark.asyncio
@@ -174,7 +189,7 @@ async def test_advanced_features_example():
 
 @pytest.mark.asyncio
 async def test_background_tool_example():
-    with patch("sys.argv", ["examples/background_tool.py"]):
+    with patch("sys.argv", ["examples/background_tool.py", "--backend", "dummy"]):
         await background_main()
 
 
