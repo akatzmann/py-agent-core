@@ -9,12 +9,19 @@ logger = logging.getLogger(__name__)
 class OllamaBackend(BaseBackend):
     """Adapter for local Ollama service instances."""
     
-    def __init__(self, client: Optional[AsyncClient] = None, model: str = "llama3"):
+    def __init__(
+        self,
+        client: Optional[AsyncClient] = None,
+        model: str = "llama3",
+        temperature: Optional[float] = None,
+        top_p: Optional[float] = None,
+    ):
         """
         Args:
             client: Optional Ollama AsyncClient instance. Constructs a default one if None.
             model: The name of the model to use.
         """
+        super().__init__(temperature=temperature, top_p=top_p)
         self.client = client or AsyncClient()
         self.model = model
 
@@ -58,6 +65,14 @@ class OllamaBackend(BaseBackend):
         kwargs = {}
         if tools:
             kwargs["tools"] = tools
+
+        options_dict = {}
+        if self.temperature is not None:
+            options_dict["temperature"] = self.temperature
+        if self.top_p is not None:
+            options_dict["top_p"] = self.top_p
+        if options_dict:
+            kwargs["options"] = options_dict
 
         if options and "thinking_level" in options:
             thinking_level = options["thinking_level"]

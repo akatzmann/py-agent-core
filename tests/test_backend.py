@@ -277,5 +277,80 @@ async def test_openai_backend_non_reasoning_model():
     assert chunks[0].text == "Hello"
 
 
+@pytest.mark.asyncio
+async def test_backend_sampling_parameters():
+    # 1. Test BaseBackend attributes storing
+    from py_agent_core.backends.base import BaseBackend
+    class TestBackend(BaseBackend):
+        async def generate_stream(self, messages, tools=None, options=None):
+            pass
+    tb = TestBackend(temperature=0.5, top_p=0.8)
+    assert tb.temperature == 0.5
+    assert tb.top_p == 0.8
+
+    # 2. Test OpenAIBackend forwarding
+    mock_client = MagicMock()
+    create_kwargs = {}
+    mock_choice = MagicMock()
+    mock_choice.delta = MagicMock(content="Hello", reasoning_content=None, tool_calls=None)
+    mock_chunk = MagicMock(choices=[mock_choice])
+
+    class MockStream:
+        def __init__(self, items):
+            self.items = items
+        def __aiter__(self):
+            return self
+        async def __anext__(self):
+            if not self.items:
+                raise StopAsyncIteration
+            return self.items.pop(0)
+        async def close(self):
+            pass
+
+    async def mock_create(*args, **kwargs):
+        nonlocal create_kwargs
+        create_kwargs = kwargs
+        return MockStream([mock_chunk])
+
+    mock_client.chat = MagicMock()
+    mock_client.chat.completions = MagicMock()
+    mock_client.chat.completions.create = AsyncMock(side_effect=mock_create)
+
+    openai_backend = OpenAIBackend(client=mock_client, model="gpt-4o", temperature=0.7, top_p=0.9)
+    assert openai_backend.temperature == 0.7
+    assert openai_backend.top_p == 0.9
+
+    async for _ in openai_backend.generate_stream([{"role": "user", "content": "hello"}]):
+        pass
+
+    assert create_kwargs.get("temperature") == 0.7
+    assert create_kwargs.get("top_p") == 0.9
+
+    # 3. Test OllamaBackend forwarding
+    mock_client_ollama = MagicMock()
+    chat_kwargs = {}
+    async def mock_chat_stream(*args, **kwargs):
+        nonlocal chat_kwargs
+        chat_kwargs = kwargs
+        async def stream_gen():
+            yield {"message": {"role": "assistant", "content": "Hello"}}
+            if False:
+                yield
+        return stream_gen()
+
+    mock_client_ollama.chat = AsyncMock(side_effect=mock_chat_stream)
+    ollama_backend = OllamaBackend(client=mock_client_ollama, model="llama3", temperature=0.4, top_p=0.85)
+    assert ollama_backend.temperature == 0.4
+    assert ollama_backend.top_p == 0.85
+
+    async for _ in ollama_backend.generate_stream([{"role": "user", "content": "hello"}]):
+        pass
+
+    options_sent = chat_kwargs.get("options", {})
+    assert options_sent.get("temperature") == 0.4
+    assert options_sent.get("top_p") == 0.85
+
+
+
 
 

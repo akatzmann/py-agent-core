@@ -5,12 +5,19 @@ from py_agent_core.backends.base import BaseBackend, BackendChunk, ToolCallChunk
 class AzureOpenAIBackend(BaseBackend):
     """Adapter for Microsoft Azure OpenAI Service."""
     
-    def __init__(self, client: AsyncAzureOpenAI, model: str):
+    def __init__(
+        self,
+        client: AsyncAzureOpenAI,
+        model: str,
+        temperature: Optional[float] = None,
+        top_p: Optional[float] = None,
+    ):
         """
         Args:
             client: An initialized AsyncAzureOpenAI client.
             model: The deployment name or model identifier.
         """
+        super().__init__(temperature=temperature, top_p=top_p)
         self.client = client
         self.model = model
 
@@ -38,6 +45,11 @@ class AzureOpenAIBackend(BaseBackend):
         kwargs = {}
         if tools:
             kwargs["tools"] = tools
+
+        if self.temperature is not None:
+            kwargs["temperature"] = self.temperature
+        if self.top_p is not None:
+            kwargs["top_p"] = self.top_p
 
         if options and "thinking_level" in options:
             thinking_level = options["thinking_level"]

@@ -139,6 +139,19 @@ from py_agent_core import DummyBackend
 backend = DummyBackend(lorem_text="hello world", chunk_delay=0.01)
 ```
 
+### Configuring Sampling Parameters
+Sampling options like `temperature` and `top_p` can be configured directly during backend instantiation, keeping the core orchestration logic decoupled from provider-specific generation details:
+
+```python
+from py_agent_core import OpenAIBackend
+
+backend = OpenAIBackend(
+    model="gpt-4o",
+    temperature=0.7,
+    top_p=0.9
+)
+```
+
 ---
 
 ## Advanced: Hierarchical Agents

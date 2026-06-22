@@ -18,6 +18,14 @@ class BackendChunk:
 class BaseBackend(ABC):
     """Abstract base class representing a unified LLM backend interface."""
     
+    def __init__(
+        self,
+        temperature: Optional[float] = None,
+        top_p: Optional[float] = None,
+    ):
+        self.temperature = temperature
+        self.top_p = top_p
+
     @abstractmethod
     async def generate_stream(
         self,

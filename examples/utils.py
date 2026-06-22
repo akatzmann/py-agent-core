@@ -16,12 +16,21 @@ def get_backend_from_args(description: str = "PyAgent Example") -> Tuple[BaseBac
                         help="Model backend endpoint URL (e.g. http://host.containers.internal:11434 for Ollama)")
     parser.add_argument("--api-key", type=str, default=None,
                         help="API authentication key (required for Azure OpenAI / OpenAI)")
+    parser.add_argument("--temperature", type=float, default=None,
+                        help="LLM sampling temperature (default: None)")
+    parser.add_argument("--top-p", type=float, default=None,
+                        help="LLM top-p sampling parameter (default: None)")
 
     args, _ = parser.parse_known_args()
 
     if args.backend == "ollama":
         client = AsyncClient(host=args.endpoint) if args.endpoint else None
-        return OllamaBackend(client=client, model=args.model), args.model
+        return OllamaBackend(
+            client=client,
+            model=args.model,
+            temperature=args.temperature,
+            top_p=args.top_p,
+        ), args.model
     elif args.backend == "azure":
         # Supply a placeholder or check
         client = AsyncAzureOpenAI(
@@ -29,12 +38,22 @@ def get_backend_from_args(description: str = "PyAgent Example") -> Tuple[BaseBac
             azure_endpoint=args.endpoint or "https://mock-azure-endpoint.openai.azure.com",
             api_version="2024-02-15-preview"
         )
-        return AzureOpenAIBackend(client=client, model=args.model), args.model
+        return AzureOpenAIBackend(
+            client=client,
+            model=args.model,
+            temperature=args.temperature,
+            top_p=args.top_p,
+        ), args.model
     elif args.backend == "openai":
         client = AsyncOpenAI(
             api_key=args.api_key or os.environ.get("OPENAI_API_KEY", "MOCK_OPENAI_KEY"),
             base_url=args.endpoint or None,
         )
-        return OpenAIBackend(client=client, model=args.model), args.model
+        return OpenAIBackend(
+            client=client,
+            model=args.model,
+            temperature=args.temperature,
+            top_p=args.top_p,
+        ), args.model
     else:
         return DummyBackend(), args.model

@@ -8,12 +8,19 @@ logger = logging.getLogger(__name__)
 class OpenAIBackend(BaseBackend):
     """Adapter for standard OpenAI API."""
     
-    def __init__(self, client: Optional[AsyncOpenAI] = None, model: str = "gpt-4o"):
+    def __init__(
+        self,
+        client: Optional[AsyncOpenAI] = None,
+        model: str = "gpt-4o",
+        temperature: Optional[float] = None,
+        top_p: Optional[float] = None,
+    ):
         """
         Args:
             client: Optional AsyncOpenAI client instance. Constructs a default one if None.
             model: The model name to use.
         """
+        super().__init__(temperature=temperature, top_p=top_p)
         self.client = client or AsyncOpenAI()
         self.model = model
 
@@ -41,6 +48,11 @@ class OpenAIBackend(BaseBackend):
         kwargs = {}
         if tools:
             kwargs["tools"] = tools
+
+        if self.temperature is not None:
+            kwargs["temperature"] = self.temperature
+        if self.top_p is not None:
+            kwargs["top_p"] = self.top_p
 
         if options and "thinking_level" in options:
             thinking_level = options["thinking_level"]
