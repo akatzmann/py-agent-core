@@ -1,7 +1,7 @@
 import json
 import logging
 from typing import AsyncGenerator, List, Dict, Any, Optional
-from ollama import AsyncClient
+from ollama import AsyncClient, ResponseError
 from py_agent_core.backends.base import BaseBackend, BackendChunk, ToolCallChunk
 
 logger = logging.getLogger(__name__)
@@ -9,21 +9,28 @@ logger = logging.getLogger(__name__)
 class OllamaBackend(BaseBackend):
     """Adapter for local Ollama service instances."""
     
+    _unsupported_reasoning_models = set()
+
     def __init__(
         self,
         client: Optional[AsyncClient] = None,
         model: str = "llama3",
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
+        supports_reasoning: Optional[bool] = None,
     ):
         """
         Args:
             client: Optional Ollama AsyncClient instance. Constructs a default one if None.
             model: The name of the model to use.
+            temperature: Default temperature.
+            top_p: Default top_p.
+            supports_reasoning: Explicit override for reasoning capability.
         """
         super().__init__(temperature=temperature, top_p=top_p)
         self.client = client or AsyncClient()
         self.model = model
+        self._supports_reasoning_override = supports_reasoning
 
     async def generate_stream(
         self,
@@ -74,27 +81,47 @@ class OllamaBackend(BaseBackend):
         if options_dict:
             kwargs["options"] = options_dict
 
+        # Determine reasoning capability
+        use_reasoning = False
+        thinking_level = "off"
         if options and "thinking_level" in options:
             thinking_level = options["thinking_level"]
             if thinking_level != "off":
-                kwargs["think"] = True
-                model_lower = self.model.lower()
-                if not any(k in model_lower for k in ("r1", "think", "reasoning", "cot")):
-                    logger.warning(
-                        "Thinking level '%s' enabled for model '%s', but the model may not natively support reasoning. "
-                        "Only models specifically trained for chain-of-thought (e.g. deepseek-r1) support thinking options.",
-                        thinking_level, self.model
-                    )
+                if self._supports_reasoning_override is not False:
+                    if self._supports_reasoning_override is True or self.model not in self._unsupported_reasoning_models:
+                        kwargs["think"] = True
+                        use_reasoning = True
             else:
                 kwargs["think"] = False
 
-        response_stream = await self.client.chat(
-            model=self.model,
-            messages=formatted_messages,
-            stream=True,
-            **kwargs
-        )
+        # Retry loop to dynamically fallback when the think parameter is unsupported
+        while True:
+            try:
+                response_stream = await self.client.chat(
+                    model=self.model,
+                    messages=formatted_messages,
+                    stream=True,
+                    **kwargs
+                )
+                break
+            except ResponseError as e:
+                err_msg = str(e)
+                if use_reasoning and ("think" in err_msg or "parameter" in err_msg or getattr(e, "status_code", None) == 400):
+                    self._unsupported_reasoning_models.add(self.model)
+                    logger.warning(
+                        "Thinking level '%s' enabled for model '%s', but the model or Ollama server does not support the 'think' option. "
+                        "Gracefully falling back to execution without it.",
+                        thinking_level, self.model
+                    )
+                    kwargs.pop("think", None)
+                    use_reasoning = False
+                    continue
+                else:
+                    raise
         
+        tool_call_ids = []
+        yielded_arguments = {}
+
         try:
             async for chunk in response_stream:
                 message = chunk.get("message", {})
@@ -107,15 +134,34 @@ class OllamaBackend(BaseBackend):
                     tool_calls = []
                     for idx, tc in enumerate(raw_tool_calls):
                         func = tc.get("function", {})
+                        
+                        # Track tool calls by ID (or sequence position) to assign stable indices
+                        tc_id = tc.get("id")
+                        if not tc_id:
+                            tc_id = f"fallback_{idx}_{func.get('name')}"
+                            
+                        if tc_id not in tool_call_ids:
+                            tool_call_ids.append(tc_id)
+                        stable_idx = tool_call_ids.index(tc_id)
+                        
                         args = func.get("arguments", "")
                         if not isinstance(args, str):
                             args = json.dumps(args)
                         
+                        # Calculate the delta of the arguments string compared to what we've already yielded
+                        # for this specific tool call, preventing double-concatenation.
+                        previous_args = yielded_arguments.get(tc_id, "")
+                        if args.startswith(previous_args):
+                            args_delta = args[len(previous_args):]
+                        else:
+                            args_delta = args
+                        yielded_arguments[tc_id] = args
+                        
                         tool_calls.append(ToolCallChunk(
-                            index=idx,
-                            id=tc.get("id"),
+                            index=stable_idx,
+                            id=tc_id,
                             name=func.get("name"),
-                            arguments=args
+                            arguments=args_delta
                         ))
                         
                 yield BackendChunk(

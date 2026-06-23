@@ -152,6 +152,11 @@ backend = OpenAIBackend(
 )
 ```
 
+> [!TIP]
+> **Dynamic Capability Fallback**: Some reasoning models (like `o1` or `o3-mini`) do not support custom `temperature` or `top_p`. Conversely, standard models do not support `reasoning_effort`.
+>
+> The backends automatically detect if a model rejects these parameters on the first request, log a single warning, and fallback/retry without them. You can explicitly bypass this probing by passing `supports_reasoning=True/False` or `supports_sampling=True/False` during backend instantiation.
+
 ---
 
 ## Advanced: Hierarchical Agents

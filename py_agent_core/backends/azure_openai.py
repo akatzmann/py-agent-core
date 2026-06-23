@@ -1,25 +1,40 @@
+import logging
+import openai
 from typing import AsyncGenerator, List, Dict, Any, Optional
 from openai import AsyncAzureOpenAI
 from py_agent_core.backends.base import BaseBackend, BackendChunk, ToolCallChunk
 
+logger = logging.getLogger(__name__)
+
 class AzureOpenAIBackend(BaseBackend):
     """Adapter for Microsoft Azure OpenAI Service."""
     
+    _unsupported_reasoning_models = set()
+    _unsupported_sampling_models = set()
+
     def __init__(
         self,
         client: AsyncAzureOpenAI,
         model: str,
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
+        supports_reasoning: Optional[bool] = None,
+        supports_sampling: Optional[bool] = None,
     ):
         """
         Args:
             client: An initialized AsyncAzureOpenAI client.
             model: The deployment name or model identifier.
+            temperature: Default temperature.
+            top_p: Default top_p.
+            supports_reasoning: Explicit override for reasoning capability.
+            supports_sampling: Explicit override for sampling parameters support.
         """
         super().__init__(temperature=temperature, top_p=top_p)
         self.client = client
         self.model = model
+        self._supports_reasoning_override = supports_reasoning
+        self._supports_sampling_override = supports_sampling
 
     async def generate_stream(
         self,
@@ -46,33 +61,63 @@ class AzureOpenAIBackend(BaseBackend):
         if tools:
             kwargs["tools"] = tools
 
-        if self.temperature is not None:
-            kwargs["temperature"] = self.temperature
-        if self.top_p is not None:
-            kwargs["top_p"] = self.top_p
+        # Determine sampling parameter capability
+        use_sampling = False
+        if self._supports_sampling_override is not False:
+            if self._supports_sampling_override is True or self.model not in self._unsupported_sampling_models:
+                if self.temperature is not None:
+                    kwargs["temperature"] = self.temperature
+                if self.top_p is not None:
+                    kwargs["top_p"] = self.top_p
+                use_sampling = True
 
+        # Determine reasoning effort capability
+        use_reasoning = False
+        thinking_level = "off"
         if options and "thinking_level" in options:
             thinking_level = options["thinking_level"]
             if thinking_level != "off":
-                model_lower = self.model.lower()
-                if "o1" in model_lower or "o3" in model_lower:
-                    if thinking_level in ("low", "medium", "high"):
-                        kwargs["reasoning_effort"] = thinking_level
-                else:
-                    import logging
-                    logger = logging.getLogger(__name__)
+                if self._supports_reasoning_override is not False:
+                    if self._supports_reasoning_override is True or self.model not in self._unsupported_reasoning_models:
+                        if thinking_level in ("low", "medium", "high"):
+                            kwargs["reasoning_effort"] = thinking_level
+                            use_reasoning = True
+
+        # Retry loop to dynamically fallback when parameters are unsupported by the model
+        while True:
+            try:
+                response_stream = await self.client.chat.completions.create(
+                    model=self.model,
+                    messages=clean_messages,
+                    stream=True,
+                    **kwargs
+                )
+                break
+            except openai.BadRequestError as e:
+                err_msg = str(e)
+                if use_reasoning and "reasoning_effort" in err_msg:
+                    self._unsupported_reasoning_models.add(self.model)
                     logger.warning(
-                        "Thinking level '%s' requested, but model '%s' may not support reasoning_effort. "
-                        "Only OpenAI o1/o3-mini models support reasoning_effort.",
+                        "Thinking level '%s' requested, but model '%s' does not support reasoning_effort. "
+                        "Gracefully falling back to execution without reasoning_effort.",
                         thinking_level, self.model
                     )
-
-        response_stream = await self.client.chat.completions.create(
-            model=self.model,
-            messages=clean_messages,
-            stream=True,
-            **kwargs
-        )
+                    kwargs.pop("reasoning_effort", None)
+                    use_reasoning = False
+                    continue
+                elif use_sampling and ("temperature" in err_msg or "top_p" in err_msg or "sampling" in err_msg):
+                    self._unsupported_sampling_models.add(self.model)
+                    logger.warning(
+                        "Sampling parameters (temperature/top_p) are not supported by model '%s'. "
+                        "Gracefully falling back to execution without them.",
+                        self.model
+                    )
+                    kwargs.pop("temperature", None)
+                    kwargs.pop("top_p", None)
+                    use_sampling = False
+                    continue
+                else:
+                    raise
         
         try:
             async for chunk in response_stream:
