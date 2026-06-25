@@ -121,6 +121,7 @@ class OllamaBackend(BaseBackend):
         
         tool_call_ids = []
         yielded_arguments = {}
+        known_tool_calls = []
 
         try:
             async for chunk in response_stream:
@@ -134,19 +135,41 @@ class OllamaBackend(BaseBackend):
                     tool_calls = []
                     for idx, tc in enumerate(raw_tool_calls):
                         func = tc.get("function", {})
-                        
-                        # Track tool calls by ID (or sequence position) to assign stable indices
-                        tc_id = tc.get("id")
-                        if not tc_id:
-                            tc_id = f"fallback_{idx}_{func.get('name')}"
-                            
-                        if tc_id not in tool_call_ids:
-                            tool_call_ids.append(tc_id)
-                        stable_idx = tool_call_ids.index(tc_id)
-                        
+                        name = func.get("name")
                         args = func.get("arguments", "")
                         if not isinstance(args, str):
                             args = json.dumps(args)
+                            
+                        tc_id = tc.get("id")
+                        if tc_id:
+                            if tc_id not in tool_call_ids:
+                                tool_call_ids.append(tc_id)
+                            stable_idx = tool_call_ids.index(tc_id)
+                        else:
+                            # Match against known tool calls to assign a stable index
+                            matched_idx = None
+                            if len(raw_tool_calls) > 1:
+                                # Cumulative stream: match by current chunk position index
+                                matched_idx = idx
+                            else:
+                                # Sequential delta stream: check if it continues the last known call
+                                if known_tool_calls:
+                                    last_call = known_tool_calls[-1]
+                                    if last_call["name"] == name and args.startswith(last_call["arguments"]):
+                                        matched_idx = len(known_tool_calls) - 1
+                                        
+                            if matched_idx is None:
+                                matched_idx = len(known_tool_calls)
+                                known_tool_calls.append({"name": name, "arguments": args})
+                            else:
+                                if matched_idx < len(known_tool_calls):
+                                    known_tool_calls[matched_idx]["arguments"] = args
+                                else:
+                                    while len(known_tool_calls) <= matched_idx:
+                                        known_tool_calls.append({"name": name, "arguments": args})
+                                        
+                            tc_id = f"fallback_{matched_idx}_{name}"
+                            stable_idx = matched_idx
                         
                         # Calculate the delta of the arguments string compared to what we've already yielded
                         # for this specific tool call, preventing double-concatenation.
@@ -160,7 +183,7 @@ class OllamaBackend(BaseBackend):
                         tool_calls.append(ToolCallChunk(
                             index=stable_idx,
                             id=tc_id,
-                            name=func.get("name"),
+                            name=name,
                             arguments=args_delta
                         ))
                         

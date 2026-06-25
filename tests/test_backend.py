@@ -525,6 +525,83 @@ async def test_openai_backend_sampling_unsupported_fallback():
     assert "top_p" not in create_kwargs
 
 
+@pytest.mark.asyncio
+async def test_ollama_backend_sequential_tool_stream_colliding_indexes():
+    from py_agent_core.backends.ollama import OllamaBackend
+    mock_client = MagicMock()
+    
+    # Simulate a sequential stream where each chunk returns a list of length 1, 
+    # but they are separate tool calls. This yields:
+    # Chunk 1: [run_command("kubectl get")]
+    # Chunk 2: [run_command("find")]
+    # Chunk 3: [run_command("kubectl config")]
+    # Notice that the list position index `idx` is 0 in every chunk!
+    async def mock_chat_stream(*args, **kwargs):
+        async def stream_gen():
+            yield {
+                "message": {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "type": "function",
+                            "function": {"name": "run_command", "arguments": {"command": "kubectl get"}}
+                        }
+                    ]
+                }
+            }
+            yield {
+                "message": {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "type": "function",
+                            "function": {"name": "run_command", "arguments": {"command": "find"}}
+                        }
+                    ]
+                }
+            }
+            yield {
+                "message": {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "type": "function",
+                            "function": {"name": "run_command", "arguments": {"command": "kubectl config"}}
+                        }
+                    ]
+                }
+            }
+        return stream_gen()
+        
+    mock_client.chat = AsyncMock(side_effect=mock_chat_stream)
+    backend = OllamaBackend(client=mock_client, model="llama3")
+    
+    chunks = []
+    async for chunk in backend.generate_stream([]):
+        chunks.append(chunk)
+        
+    # Verify that stable indices are unique (0, 1, 2) rather than colliding on 0
+    assert len(chunks) == 3
+    
+    assert len(chunks[0].tool_calls) == 1
+    assert chunks[0].tool_calls[0].index == 0
+    assert chunks[0].tool_calls[0].id == "fallback_0_run_command"
+    assert chunks[0].tool_calls[0].arguments == '{"command": "kubectl get"}'
+    
+    assert len(chunks[1].tool_calls) == 1
+    assert chunks[1].tool_calls[0].index == 1
+    assert chunks[1].tool_calls[0].id == "fallback_1_run_command"
+    assert chunks[1].tool_calls[0].arguments == '{"command": "find"}'
+    
+    assert len(chunks[2].tool_calls) == 1
+    assert chunks[2].tool_calls[0].index == 2
+    assert chunks[2].tool_calls[0].id == "fallback_2_run_command"
+    assert chunks[2].tool_calls[0].arguments == '{"command": "kubectl config"}'
+
+
 
 
 
