@@ -293,8 +293,22 @@ class Agent:
         loop_config = self._create_loop_config(custom_emit=None)
         
         queue = asyncio.Queue()
+        pending_acks = set()
+        
         async def event_sink(event: AgentEvent):
-            await queue.put(event)
+            if abort_signal.aborted and getattr(event, "type", None) != "interrupted":
+                return
+            ack = asyncio.Event()
+            pending_acks.add(ack)
+            try:
+                await queue.put((event, ack))
+                while not ack.is_set() and not abort_signal.aborted:
+                    try:
+                        await asyncio.wait_for(ack.wait(), timeout=0.1)
+                    except asyncio.TimeoutError:
+                        pass
+            finally:
+                pending_acks.discard(ack)
             
         loop_config.emit = event_sink
         
@@ -311,26 +325,36 @@ class Agent:
             except Exception as e:
                 import traceback
                 traceback.print_exc()
-                await queue.put(ErrorEvent(str(e)))
+                await queue.put((ErrorEvent(str(e)), None))
                 raise e
             finally:
                 _active_agent_ctx.reset(token)
-                await queue.put(None)
+                await queue.put((None, None))
                 
         task = asyncio.create_task(run_task())
         self.active_run = ActiveRun(task=task, abort_signal=abort_signal)
         
         try:
             while True:
-                event = await queue.get()
+                item = await queue.get()
+                if item is None:
+                    break
+                event, ack = item
                 if event is None:
                     break
                     
                 # Feed state reductions and notify subscribers
-                await self._process_events(event)
-                yield event
+                try:
+                    await self._process_events(event)
+                    yield event
+                finally:
+                    if ack:
+                        ack.set()
             await task
         finally:
+            for ack in list(pending_acks):
+                ack.set()
+            pending_acks.clear()
             self._finish_run()
 
     # --- Internal Lifecycle Drivers ---

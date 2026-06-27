@@ -508,3 +508,54 @@ async def test_agent_thinking_propagation_and_events():
     assert assistant_msgs[0]["thinking"] == "Thinking step..."
 
 
+@pytest.mark.asyncio
+async def test_tool_execution_start_event_ordering_rendezvous():
+    from py_agent_core.backends.base import ToolCallChunk
+    execution_order = []
+    
+    @tool
+    def sample_tool() -> str:
+        execution_order.append("tool_executing")
+        return "done"
+        
+    class MockToolBackend(BaseBackend):
+        async def generate_stream(self, messages, tools=None, options=None):
+            if not any(m.get("role") == "tool" for m in messages):
+                yield BackendChunk(tool_calls=[
+                    ToolCallChunk(index=0, id="call_1", name="sample_tool", arguments='{}')
+                ])
+            else:
+                yield BackendChunk(text="Finished tool execution.")
+
+    agent = Agent(backend=MockToolBackend(), initial_state={"tools": [sample_tool]})
+    
+    async for event in agent.prompt_stream("Run tool"):
+        if event.type == "tool_execution_start":
+            execution_order.append("event_tool_start_yielded")
+            
+    # Verify that the event was yielded to prompt_stream consumer BEFORE the tool executed
+    assert execution_order == ["event_tool_start_yielded", "tool_executing"]
+
+
+@pytest.mark.asyncio
+async def test_stream_abort_and_cleanup_rendezvous():
+    class SlowBackend(BaseBackend):
+        async def generate_stream(self, messages, tools=None, options=None):
+            for i in range(10):
+                yield BackendChunk(text=f"chunk_{i}")
+                await asyncio.sleep(0.02)
+
+    agent = Agent(backend=SlowBackend())
+    received_chunks = []
+    
+    async for event in agent.prompt_stream("Test abort"):
+        if event.type == "message_update":
+            received_chunks.append(event)
+            if len(received_chunks) == 2:
+                agent.abort()
+                
+    # Ensure background task completed cleanly without hanging
+    await agent.wait_for_idle()
+    assert not agent.state.is_streaming
+
+
