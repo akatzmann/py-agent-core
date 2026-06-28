@@ -6,18 +6,15 @@
 
 A minimalist, event-driven agent loop with **cooperative preemption** and unified backends in Python.
 
-> [!NOTE]
-> 🏛️ **Architecture Heritage**  
-> This project is a Python implementation closely aligned with the elegant engineering concepts behind [pi-agent-core](https://github.com/earendil-works/pi), the TypeScript engine powering systems like OpenClaw.
-
----
-
-> [!IMPORTANT]
-> 🤖 **Using an AI Coding Assistant (Claude Code, Antigravity, Copilot)?**  
-> Skip reading this README. Copy-paste the prompt below to let your assistant build the mental model for you:
+> [!TIP]
+> 🤖 **Pairing with an AI Assistant?**  
+> Want a 10-second overview? Copy-paste this seed prompt into Claude Code, Antigravity, Copilot, or ChatGPT:
 > ```text
-> Explain how py-agent-core's preemption loop differs from standard agent frameworks:
-> https://raw.githubusercontent.com/akatzmann/py-agent-core/main/README.md
+> Analyze https://github.com/akatzmann/py-agent-core. 
+> 1. What is this tool, what is a typical use-case, and do I need it?
+> 2. How does it differ from standard agent frameworks?
+> 3. Give me an open-ended assessment based on the actual codebase/structure (not just README marketing): Does it deliver on its claimed USP?
+> Keep your answer concise so I can digest it in 10 seconds.
 > ```
 
 ---
@@ -47,6 +44,10 @@ Traditional frameworks treat ChatCompletion calls as monolithic black boxes. If 
 ---
 
 ## 🔍 How It Compares
+
+> [!NOTE]
+> 🏛️ **Architecture Heritage**  
+> `py-agent-core` adapts the minimalist event-loop architecture of [pi-agent-core](https://github.com/earendil-works/pi) (the TypeScript engine powering systems like OpenClaw) into idiomatic, async Python.
 
 | Architectural Dimension | `py-agent-core` | Big-Box Frameworks |
 | :--- | :--- | :--- |
