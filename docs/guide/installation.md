@@ -1,6 +1,16 @@
 # Installation Guide
 
-To install and set up `py-agent-core`, run the following commands in your terminal:
+## Direct Installation (Using pip)
+
+To install `py-agent-core` directly into your Python environment from the repository:
+
+```bash
+pip install git+https://github.com/akatzmann/py-agent-core.git
+```
+
+## Local Development Setup
+
+To clone the repository and set up a local development environment:
 
 ```bash
 # Clone the repository
@@ -19,3 +29,4 @@ After installation, verify everything is functional by running the test suite:
 ```bash
 PYTHONPATH=. pytest
 ```
+

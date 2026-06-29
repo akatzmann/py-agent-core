@@ -1,8 +1,7 @@
 # py-agent-core
 
-[![PyPI version](https://badge.fury.io/py/py-agent-core.svg)](https://badge.fury.io/py/py-agent-core)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python Support](https://img.shields.io/badge/python-3.9%20%7C%203.10%20%7C%203.11%20%7C%203.12-blue)](https://pypi.org/project/py-agent-core/)
+[![Python Support](https://img.shields.io/badge/python-3.9%20%7C%203.10%20%7C%203.11%20%7C%203.12-blue)](https://github.com/akatzmann/py-agent-core)
 
 A minimalist, event-driven agent loop with **cooperative preemption** and unified backends in Python.
 
@@ -64,7 +63,7 @@ Traditional frameworks treat ChatCompletion calls as monolithic black boxes. If 
 
 ### 1. Install
 ```bash
-pip install py-agent-core
+pip install git+https://github.com/akatzmann/py-agent-core.git
 ```
 *(For full local development environment setup instructions, refer to the [Installation Guide](docs/guide/installation.md).)*
 
