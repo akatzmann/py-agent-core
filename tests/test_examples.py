@@ -91,18 +91,18 @@ def test_cli_backend_parsing_dummy():
         assert isinstance(backend, DummyBackend)
 
 def test_cli_backend_parsing_openai():
-    test_args = ["prog_name", "--backend", "openai", "--model", "gpt-4o"]
+    test_args = ["prog_name", "--backend", "openai", "--model", "gpt-6.1-sol"]
     with patch("sys.argv", test_args):
         backend, model = get_backend_from_args()
         assert isinstance(backend, OpenAIBackend)
-        assert model == "gpt-4o"
+        assert model == "gpt-6.1-sol"
 
 def test_cli_backend_parsing_default():
     test_args = ["prog_name"]
     with patch("sys.argv", test_args):
         backend, model = get_backend_from_args()
         assert isinstance(backend, OpenAIBackend)
-        assert model == "gpt-4o"
+        assert model == "gpt-6.1-sol"
 
 @pytest.mark.asyncio
 async def test_interactive_chat_tui_build():

@@ -602,6 +602,180 @@ async def test_ollama_backend_sequential_tool_stream_colliding_indexes():
     assert chunks[2].tool_calls[0].arguments == '{"command": "kubectl config"}'
 
 
+@pytest.mark.asyncio
+async def test_openai_backend_reasoning_tool_conflict_with_thinking():
+    from openai import BadRequestError
+    OpenAIBackend._models_requiring_reasoning_none.clear()
+    OpenAIBackend._unsupported_reasoning_models.clear()
+
+    mock_client = MagicMock()
+    call_count = 0
+    create_kwargs_history = []
+
+    mock_choice = MagicMock()
+    mock_choice.delta = MagicMock(content="Done", reasoning_content=None, tool_calls=None)
+    mock_chunk = MagicMock(choices=[mock_choice])
+
+    class MockStream:
+        def __init__(self, items):
+            self.items = items
+        def __aiter__(self):
+            return self
+        async def __anext__(self):
+            if not self.items:
+                raise StopAsyncIteration
+            return self.items.pop(0)
+        async def close(self):
+            pass
+
+    async def mock_create(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        create_kwargs_history.append(kwargs)
+        if kwargs.get("reasoning_effort") != "none":
+            mock_response = MagicMock()
+            mock_response.status_code = 400
+            raise BadRequestError(
+                message="Function tools with reasoning_effort are not supported for gpt-6.1-sol in /v1/chat/completions. To use function tools, use /v1/responses or set reasoning_effort to 'none'.",
+                response=mock_response,
+                body={}
+            )
+        return MockStream([mock_chunk])
+
+    mock_client.chat = MagicMock()
+    mock_client.chat.completions = MagicMock()
+    mock_client.chat.completions.create = AsyncMock(side_effect=mock_create)
+
+    backend = OpenAIBackend(client=mock_client, model="gpt-6.1-sol")
+    messages = [{"role": "user", "content": "run tool"}]
+    tools = [{"type": "function", "function": {"name": "test_tool"}}]
+
+    chunks = []
+    async for chunk in backend.generate_stream(messages, tools=tools, options={"thinking_level": "medium"}):
+        chunks.append(chunk)
+
+    assert call_count == 2
+    assert create_kwargs_history[0].get("reasoning_effort") == "medium"
+    assert create_kwargs_history[1].get("reasoning_effort") == "none"
+    assert "gpt-6.1-sol" in OpenAIBackend._models_requiring_reasoning_none
+    assert chunks[0].text == "Done"
 
 
+@pytest.mark.asyncio
+async def test_azure_openai_backend_reasoning_tool_conflict_thinking_off():
+    from openai import BadRequestError
+    from py_agent_core.backends.azure_openai import AzureOpenAIBackend
+    AzureOpenAIBackend._models_requiring_reasoning_none.clear()
+    AzureOpenAIBackend._unsupported_reasoning_models.clear()
 
+    mock_client = MagicMock()
+    call_count = 0
+    create_kwargs_history = []
+
+    mock_choice = MagicMock()
+    mock_choice.delta = MagicMock(content="Done Azure", reasoning_content=None, tool_calls=None)
+    mock_chunk = MagicMock(choices=[mock_choice])
+
+    class MockStream:
+        def __init__(self, items):
+            self.items = items
+        def __aiter__(self):
+            return self
+        async def __anext__(self):
+            if not self.items:
+                raise StopAsyncIteration
+            return self.items.pop(0)
+        async def close(self):
+            pass
+
+    async def mock_create(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        create_kwargs_history.append(kwargs)
+        if kwargs.get("reasoning_effort") != "none":
+            mock_response = MagicMock()
+            mock_response.status_code = 400
+            raise BadRequestError(
+                message="Function tools with reasoning_effort are not supported for gpt-6.1-sol in /v1/chat/completions. To use function tools, use /v1/responses or set reasoning_effort to 'none'.",
+                response=mock_response,
+                body={}
+            )
+        return MockStream([mock_chunk])
+
+    mock_client.chat = MagicMock()
+    mock_client.chat.completions = MagicMock()
+    mock_client.chat.completions.create = AsyncMock(side_effect=mock_create)
+
+    backend = AzureOpenAIBackend(client=mock_client, model="gpt-6.1-sol")
+    messages = [{"role": "user", "content": "run tool"}]
+    tools = [{"type": "function", "function": {"name": "test_tool"}}]
+
+    # thinking_level is "off" (default)
+    chunks = []
+    async for chunk in backend.generate_stream(messages, tools=tools, options={"thinking_level": "off"}):
+        chunks.append(chunk)
+
+    assert call_count == 2
+    assert "reasoning_effort" not in create_kwargs_history[0]
+    assert create_kwargs_history[1].get("reasoning_effort") == "none"
+    assert "gpt-6.1-sol" in AzureOpenAIBackend._models_requiring_reasoning_none
+    assert chunks[0].text == "Done Azure"
+
+
+@pytest.mark.asyncio
+async def test_backend_cached_model_proactive_reasoning_none():
+    OpenAIBackend._models_requiring_reasoning_none.clear()
+    OpenAIBackend._models_requiring_reasoning_none.add("gpt-6.1-sol")
+
+    mock_client = MagicMock()
+    create_kwargs = {}
+
+    mock_choice = MagicMock()
+    mock_choice.delta = MagicMock(content="Proactive", reasoning_content=None, tool_calls=None)
+    mock_chunk = MagicMock(choices=[mock_choice])
+
+    class MockStream:
+        def __init__(self, items):
+            self.items = items
+        def __aiter__(self):
+            return self
+        async def __anext__(self):
+            if not self.items:
+                raise StopAsyncIteration
+            return self.items.pop(0)
+        async def close(self):
+            pass
+
+    async def mock_create(*args, **kwargs):
+        nonlocal create_kwargs
+        create_kwargs = kwargs
+        return MockStream([mock_chunk])
+
+    mock_client.chat = MagicMock()
+    mock_client.chat.completions = MagicMock()
+    mock_client.chat.completions.create = AsyncMock(side_effect=mock_create)
+
+    backend = OpenAIBackend(client=mock_client, model="gpt-6.1-sol")
+    messages = [{"role": "user", "content": "hello"}]
+    tools = [{"type": "function", "function": {"name": "test_tool"}}]
+
+    # 1. With tools: should proactively pass reasoning_effort="none" on first attempt
+    chunks = []
+    async for chunk in backend.generate_stream(messages, tools=tools, options={"thinking_level": "medium"}):
+        chunks.append(chunk)
+
+    assert create_kwargs.get("reasoning_effort") == "none"
+    assert chunks[0].text == "Proactive"
+
+    # 2. Without tools: should retain requested reasoning_effort="medium"
+    chunks = []
+    async for chunk in backend.generate_stream(messages, tools=None, options={"thinking_level": "medium"}):
+        chunks.append(chunk)
+
+    assert create_kwargs.get("reasoning_effort") == "medium"
+
+
+def test_openai_backend_default_model():
+    mock_client = MagicMock()
+    backend = OpenAIBackend(client=mock_client)
+    assert backend.model == "gpt-6.1-sol"

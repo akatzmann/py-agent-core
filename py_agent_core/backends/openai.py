@@ -11,11 +11,12 @@ class OpenAIBackend(BaseBackend):
     
     _unsupported_reasoning_models = set()
     _unsupported_sampling_models = set()
+    _models_requiring_reasoning_none = set()
 
     def __init__(
         self,
         client: Optional[AsyncOpenAI] = None,
-        model: str = "gpt-4o",
+        model: str = "gpt-6.1-sol",
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
         supports_reasoning: Optional[bool] = None,
@@ -74,7 +75,9 @@ class OpenAIBackend(BaseBackend):
         # Determine reasoning effort capability
         use_reasoning = False
         thinking_level = "off"
-        if options and "thinking_level" in options:
+        if tools and self.model in self._models_requiring_reasoning_none:
+            kwargs["reasoning_effort"] = "none"
+        elif options and "thinking_level" in options:
             thinking_level = options["thinking_level"]
             if thinking_level != "off":
                 if self._supports_reasoning_override is not False:
@@ -95,7 +98,23 @@ class OpenAIBackend(BaseBackend):
                 break
             except openai.BadRequestError as e:
                 err_msg = str(e)
-                if use_reasoning and "reasoning_effort" in err_msg:
+                err_msg_lower = err_msg.lower()
+                is_reasoning_tool_conflict = (
+                    "reasoning_effort" in err_msg_lower
+                    and ("none" in err_msg_lower or "responses" in err_msg_lower or "function tools" in err_msg_lower or "tool" in err_msg_lower)
+                    and kwargs.get("reasoning_effort") != "none"
+                )
+                if is_reasoning_tool_conflict:
+                    self._models_requiring_reasoning_none.add(self.model)
+                    logger.warning(
+                        "Model '%s' does not support function tools with active reasoning on /v1/chat/completions. "
+                        "Gracefully falling back to execution with reasoning_effort='none'.",
+                        self.model
+                    )
+                    kwargs["reasoning_effort"] = "none"
+                    use_reasoning = False
+                    continue
+                elif use_reasoning and "reasoning_effort" in err_msg:
                     self._unsupported_reasoning_models.add(self.model)
                     logger.warning(
                         "Thinking level '%s' requested, but model '%s' does not support reasoning_effort. "

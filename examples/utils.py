@@ -10,8 +10,8 @@ def get_backend_from_args(description: str = "PyAgent Example") -> Tuple[BaseBac
     parser = argparse.ArgumentParser(description=description)
     parser.add_argument("--backend", choices=["dummy", "ollama", "azure", "openai"], default="openai",
                         help="LLM backend adapter to use (default: openai)")
-    parser.add_argument("--model", type=str, default="gpt-4o",
-                        help="Model identifier or deployment name (default: gpt-4o)")
+    parser.add_argument("--model", type=str, default="gpt-6.1-sol",
+                        help="Model identifier or deployment name (default: gpt-6.1-sol)")
     parser.add_argument("--endpoint", type=str, default=None,
                         help="Model backend endpoint URL (e.g. http://host.containers.internal:11434 for Ollama)")
     parser.add_argument("--api-key", type=str, default=None,

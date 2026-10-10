@@ -117,8 +117,12 @@ from openai import AsyncOpenAI
 from py_agent_core import OpenAIBackend
 
 client = AsyncOpenAI(api_key="sk-...")
-backend = OpenAIBackend(client=client, model="gpt-4o")
+backend = OpenAIBackend(client=client, model="gpt-6.1-sol")
 ```
+
+For reasoning models (such as `gpt-6.1-sol`, `o1`, or `o3-mini`) queried via `/v1/chat/completions`:
+- Configured `thinking_level` (`"low"`, `"medium"`, `"high"`) maps directly to `reasoning_effort`.
+- When function tools are invoked, `/v1/chat/completions` requires reasoning effort to be set to `"none"`. `OpenAIBackend` and `AzureOpenAIBackend` automatically handle this constraint with a graceful fallback, forcing `reasoning_effort="none"` during tool calls so execution never crashes.
 
 ### Offline / Mock Testing
 Simulate streaming completion and tool execution completely offline with zero LLM API dependency:
