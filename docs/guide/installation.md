@@ -1,8 +1,16 @@
 # Installation Guide
 
-## Direct Installation (Using pip)
+## Installation from PyPI (Recommended)
 
-To install `py-agent-core` directly into your Python environment from the repository:
+To install `python-agent-core` directly from PyPI:
+
+```bash
+pip install python-agent-core
+```
+
+## Installation from Source
+
+To install directly from the GitHub repository:
 
 ```bash
 pip install git+https://github.com/akatzmann/py-agent-core.git

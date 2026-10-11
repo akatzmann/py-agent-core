@@ -3,15 +3,29 @@ requires = ["setuptools>=61.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "py-agent-core"
-version = "0.2.0"
+name = "python-agent-core"
+version = "0.2.1"
 description = "A minimalist, non-opinionated, event-driven agent loop with cooperative interruption."
 readme = "README.md"
 requires-python = ">=3.9"
+license = "MIT"
+authors = [
+    { name = "akatzmann" }
+]
+keywords = ["agent", "llm", "event-driven", "streaming", "preemption", "asyncio"]
 classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Operating System :: OS Independent",
+    "Typing :: Typed",
 ]
 dependencies = [
     "openai>=1.0.0",
@@ -25,3 +39,21 @@ test = [
     "pytest-asyncio>=0.20.0",
     "prompt-toolkit>=3.0.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/akatzmann/py-agent-core"
+Repository = "https://github.com/akatzmann/py-agent-core"
+Issues = "https://github.com/akatzmann/py-agent-core/issues"
+Documentation = "https://github.com/akatzmann/py-agent-core#readme"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["py_agent_core*"]
+namespaces = false
+
+[tool.setuptools.package-data]
+py_agent_core = ["py.typed"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+

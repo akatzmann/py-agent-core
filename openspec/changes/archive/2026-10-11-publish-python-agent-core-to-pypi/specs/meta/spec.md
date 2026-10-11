@@ -1,0 +1,21 @@
+## MODIFIED Requirements
+
+### Requirement: Comprehensive README documentation
+The repository SHALL include a `README.md` at the root optimized for LLM agent ingestion and human reference, containing:
+- A PyPI package badge and installation instruction referencing `pip install python-agent-core`.
+- An architecture heritage note linking to the concepts behind `pi-agent-core`.
+- A visual ASCII diagram illustrating the cooperative preemption loop.
+- A comparative capabilities matrix using UTF-8 status indicators.
+- Local-first quickstart documentation using Ollama.
+- Visually distinct context-delegation prompts for AI coding agents positioned immediately below the introductory pitch and architecture heritage note.
+
+#### Scenario: Verify README file
+- **WHEN** the project is inspected at the root directory
+- **THEN** a README.md file SHALL exist and contain the PyPI package badge, `pip install python-agent-core` instructions, the architecture heritage note, the cooperative preemption diagram, the comparative capabilities matrix with UTF-8 icons, the local-first Ollama quickstart, and the AI agent context-delegation prompts.
+
+### Requirement: Dedicated Installation Guide
+The repository SHALL include an installation guide at `docs/guide/installation.md` containing detailed commands to install `python-agent-core` from PyPI, as well as instructions to clone, configure a virtual environment, and run tests locally.
+
+#### Scenario: Verify Installation Guide file
+- **WHEN** the project is inspected at `docs/guide/installation.md`
+- **THEN** the file SHALL exist and contain specific bash commands to install `python-agent-core` via pip and set up the local development environment.
