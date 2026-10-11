@@ -117,12 +117,17 @@ from openai import AsyncOpenAI
 from py_agent_core import OpenAIBackend
 
 client = AsyncOpenAI(api_key="sk-...")
-backend = OpenAIBackend(client=client, model="gpt-6.1-sol")
+backend = OpenAIBackend(client=client, model="gpt-6.1-sol", api_mode="auto")
 ```
 
-For reasoning models (such as `gpt-6.1-sol`, `o1`, or `o3-mini`) queried via `/v1/chat/completions`:
-- Configured `thinking_level` (`"low"`, `"medium"`, `"high"`) maps directly to `reasoning_effort`.
-- When function tools are invoked, `/v1/chat/completions` requires reasoning effort to be set to `"none"`. `OpenAIBackend` and `AzureOpenAIBackend` automatically handle this constraint with a graceful fallback, forcing `reasoning_effort="none"` during tool calls so execution never crashes.
+#### Modern `/v1/responses` API & Frontier Models
+`OpenAIBackend` and `AzureOpenAIBackend` support OpenAI's official `/v1/responses` endpoint alongside legacy `/v1/chat/completions`:
+- **Active Reasoning with Function Tools**: Native reasoning models (e.g., `gpt-6.1-sol`, `o-` series) execute function tools concurrently with active thinking traces via `/v1/responses`.
+- **Zero Model-Name Guessing**: Protocol selection never branches on arbitrary model strings. In `api_mode="auto"`, requests negotiate endpoint capabilities dynamically:
+  - Optimistically connects to `/v1/responses`; gracefully falls back to `/v1/chat/completions` if the server returns 404/405 or unsupported endpoint status.
+  - Dynamically promotes to `/v1/responses` if `/v1/chat/completions` rejects function tools due to active reasoning conflicts.
+- **Explicit Protocol Control**: Set `api_mode="responses"` to enforce the responses endpoint or `api_mode="chat_completions"` for legacy proxies/servers (e.g., vLLM, LiteLLM).
+- **Thinking Trace Mapping**: Configured `thinking_level` (`"low"`, `"medium"`, `"high"`) maps directly to `reasoning={"effort": ...}` on `/v1/responses` and `reasoning_effort` on `/v1/chat/completions`.
 
 ### Offline / Mock Testing
 Simulate streaming completion and tool execution completely offline with zero LLM API dependency:

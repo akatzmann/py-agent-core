@@ -779,3 +779,371 @@ def test_openai_backend_default_model():
     mock_client = MagicMock()
     backend = OpenAIBackend(client=mock_client)
     assert backend.model == "gpt-6.1-sol"
+
+
+def test_responses_message_and_tool_converters():
+    from py_agent_core.backends.openai_responses_utils import (
+        _convert_messages_for_responses,
+        _convert_tools_for_responses,
+    )
+    messages = [
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "Hello!"},
+        {
+            "role": "assistant",
+            "content": "Let me look that up.",
+            "tool_calls": [
+                {
+                    "id": "call_123",
+                    "type": "function",
+                    "function": {"name": "fetch_info", "arguments": '{"query": "antigravity"}'},
+                }
+            ],
+        },
+        {"role": "tool", "tool_call_id": "call_123", "content": "Found 42 results."},
+    ]
+
+    instructions, input_items = _convert_messages_for_responses(messages)
+    assert instructions == "You are a helpful assistant."
+    assert len(input_items) == 4
+    assert input_items[0] == {"type": "message", "role": "user", "content": "Hello!"}
+    assert input_items[1] == {"type": "message", "role": "assistant", "content": "Let me look that up."}
+    assert input_items[2] == {
+        "type": "function_call",
+        "call_id": "call_123",
+        "name": "fetch_info",
+        "arguments": '{"query": "antigravity"}',
+    }
+    assert input_items[3] == {
+        "type": "function_call_output",
+        "call_id": "call_123",
+        "output": "Found 42 results.",
+    }
+
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "fetch_info",
+                "description": "Fetch documentation",
+                "parameters": {"type": "object", "properties": {"query": {"type": "string"}}},
+                "strict": True,
+            },
+        }
+    ]
+    converted_tools = _convert_tools_for_responses(tools)
+    assert converted_tools == [
+        {
+            "type": "function",
+            "name": "fetch_info",
+            "description": "Fetch documentation",
+            "parameters": {"type": "object", "properties": {"query": {"type": "string"}}},
+            "strict": True,
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_openai_backend_responses_streaming():
+    from openai.types.responses import (
+        ResponseTextDeltaEvent,
+        ResponseReasoningTextDeltaEvent,
+        ResponseOutputItemAddedEvent,
+        ResponseFunctionCallArgumentsDeltaEvent,
+        ResponseFunctionToolCall,
+    )
+
+    mock_client = MagicMock()
+    responses_kwargs = {}
+
+    e1 = ResponseReasoningTextDeltaEvent(
+        content_index=0, delta="Thinking step 1...", item_id="item_0", output_index=0, sequence_number=0, type="response.reasoning_text.delta"
+    )
+    e2 = ResponseOutputItemAddedEvent(
+        item=ResponseFunctionToolCall(arguments="", call_id="call_abc", name="calculate", type="function_call"),
+        output_index=1,
+        sequence_number=1,
+        type="response.output_item.added",
+    )
+    e3 = ResponseFunctionCallArgumentsDeltaEvent(
+        delta='{"x": 10}', item_id="call_abc", output_index=1, sequence_number=2, type="response.function_call_arguments.delta"
+    )
+    e4 = ResponseTextDeltaEvent(
+        content_index=0, delta="Calculation complete.", item_id="item_2", logprobs=[], output_index=2, sequence_number=3, type="response.output_text.delta"
+    )
+
+    class MockStream:
+        def __init__(self, events):
+            self.events = events
+        def __aiter__(self):
+            return self
+        async def __anext__(self):
+            if not self.events:
+                raise StopAsyncIteration
+            return self.events.pop(0)
+        async def close(self):
+            pass
+
+    async def mock_responses_create(*args, **kwargs):
+        nonlocal responses_kwargs
+        responses_kwargs = kwargs
+        return MockStream([e1, e2, e3, e4])
+
+    mock_client.responses = MagicMock()
+    mock_client.responses.create = AsyncMock(side_effect=mock_responses_create)
+
+    backend = OpenAIBackend(client=mock_client, model="gpt-6.1-sol", api_mode="responses")
+    messages = [
+        {"role": "system", "content": "System prompt"},
+        {"role": "user", "content": "Compute 10"}
+    ]
+    tools = [{
+        "type": "function",
+        "function": {"name": "calculate", "parameters": {"type": "object"}}
+    }]
+
+    chunks = []
+    async for chunk in backend.generate_stream(messages, tools=tools, options={"thinking_level": "high"}):
+        chunks.append(chunk)
+
+    assert responses_kwargs.get("instructions") == "System prompt"
+    assert responses_kwargs.get("reasoning") == {"effort": "high"}
+    assert len(responses_kwargs.get("tools")) == 1
+    assert responses_kwargs.get("tools")[0]["name"] == "calculate"
+
+    # Verify chunk sequence
+    assert len(chunks) == 4
+    assert chunks[0].thinking == "Thinking step 1..."
+    assert chunks[1].tool_calls[0].name == "calculate"
+    assert chunks[1].tool_calls[0].id == "call_abc"
+    assert chunks[2].tool_calls[0].arguments == '{"x": 10}'
+    assert chunks[3].text == "Calculation complete."
+
+
+@pytest.mark.asyncio
+async def test_backend_responses_404_fallback_to_chat_completions():
+    from openai import NotFoundError
+
+    OpenAIBackend._unsupported_responses_endpoints.clear()
+    mock_client = MagicMock()
+    mock_client.base_url = "https://legacy-proxy.local/v1"
+
+    async def mock_responses_create(*args, **kwargs):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 404
+        raise NotFoundError(message="404 Not Found: /v1/responses unknown", response=mock_resp, body={})
+
+    mock_choice = MagicMock()
+    mock_choice.delta = MagicMock(content="Fallback response", reasoning_content=None, tool_calls=None)
+    mock_chunk = MagicMock(choices=[mock_choice])
+
+    class MockChatStream:
+        def __init__(self, items):
+            self.items = items
+        def __aiter__(self):
+            return self
+        async def __anext__(self):
+            if not self.items:
+                raise StopAsyncIteration
+            return self.items.pop(0)
+        async def close(self):
+            pass
+
+    chat_call_count = 0
+    async def mock_chat_create(*args, **kwargs):
+        nonlocal chat_call_count
+        chat_call_count += 1
+        return MockChatStream([mock_chunk])
+
+    mock_client.responses = MagicMock()
+    mock_client.responses.create = AsyncMock(side_effect=mock_responses_create)
+    mock_client.chat = MagicMock()
+    mock_client.chat.completions = MagicMock()
+    mock_client.chat.completions.create = AsyncMock(side_effect=mock_chat_create)
+
+    backend = OpenAIBackend(client=mock_client, model="legacy-model", api_mode="auto")
+    messages = [{"role": "user", "content": "hi"}]
+
+    # 1. First call: attempts responses, gets 404, caches endpoint, and falls back to chat completions
+    chunks = []
+    async for chunk in backend.generate_stream(messages):
+        chunks.append(chunk)
+
+    assert len(chunks) == 1
+    assert chunks[0].text == "Fallback response"
+    assert ("https://legacy-proxy.local/v1", "legacy-model") in OpenAIBackend._unsupported_responses_endpoints
+    assert mock_client.responses.create.call_count == 1
+    assert chat_call_count == 1
+
+    # 2. Second call: immediately uses chat completions without probing responses
+    chunks2 = []
+    async for chunk in backend.generate_stream(messages):
+        chunks2.append(chunk)
+
+    assert len(chunks2) == 1
+    assert mock_client.responses.create.call_count == 1
+    assert chat_call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_backend_chat_completions_promotes_to_responses_on_reasoning_tool_conflict():
+    from openai import BadRequestError
+    from openai.types.responses import ResponseTextDeltaEvent
+
+    OpenAIBackend._requires_responses_for_tools.clear()
+    OpenAIBackend._unsupported_responses_endpoints.clear()
+
+    mock_client = MagicMock()
+    mock_client.base_url = "https://azure-openai.local/v1"
+
+    async def mock_chat_create(*args, **kwargs):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 400
+        raise BadRequestError(
+            message="Unsupported value: 'reasoning_effort' does not support 'none' with this model. Supported values are: 'low', 'medium', 'high', and 'xhigh'.",
+            response=mock_resp,
+            body={},
+        )
+
+    e1 = ResponseTextDeltaEvent(
+        content_index=0, delta="Promoted successfully", item_id="item_0", logprobs=[], output_index=0, sequence_number=0, type="response.output_text.delta"
+    )
+
+    class MockResponsesStream:
+        def __init__(self, events):
+            self.events = events
+        def __aiter__(self):
+            return self
+        async def __anext__(self):
+            if not self.events:
+                raise StopAsyncIteration
+            return self.events.pop(0)
+        async def close(self):
+            pass
+
+    async def mock_responses_create(*args, **kwargs):
+        return MockResponsesStream([e1])
+
+    mock_client.chat = MagicMock()
+    mock_client.chat.completions = MagicMock()
+    mock_client.chat.completions.create = AsyncMock(side_effect=mock_chat_create)
+    mock_client.responses = MagicMock()
+    mock_client.responses.create = AsyncMock(side_effect=mock_responses_create)
+
+    # Simulate an endpoint marked as unsupported responses initially, but chat completions fails with reasoning conflict
+    OpenAIBackend._unsupported_responses_endpoints.add(("https://azure-openai.local/v1", "gpt-6.1-sol"))
+
+    backend = OpenAIBackend(client=mock_client, model="gpt-6.1-sol", api_mode="auto")
+    messages = [{"role": "user", "content": "search"}]
+    tools = [{"type": "function", "function": {"name": "search"}}]
+
+    chunks = []
+    async for chunk in backend.generate_stream(messages, tools=tools, options={"thinking_level": "medium"}):
+        chunks.append(chunk)
+
+    assert len(chunks) == 1
+    assert chunks[0].text == "Promoted successfully"
+    assert ("https://azure-openai.local/v1", "gpt-6.1-sol") in OpenAIBackend._requires_responses_for_tools
+    assert ("https://azure-openai.local/v1", "gpt-6.1-sol") not in OpenAIBackend._unsupported_responses_endpoints
+
+
+@pytest.mark.asyncio
+async def test_backend_explicit_api_modes():
+    from openai.types.responses import ResponseTextDeltaEvent
+
+    mock_client = MagicMock()
+
+    mock_choice = MagicMock()
+    mock_choice.delta = MagicMock(content="From chat", reasoning_content=None, tool_calls=None)
+    mock_chunk = MagicMock(choices=[mock_choice])
+
+    class MockChatStream:
+        def __init__(self, items):
+            self.items = items
+        def __aiter__(self):
+            return self
+        async def __anext__(self):
+            if not self.items:
+                raise StopAsyncIteration
+            return self.items.pop(0)
+        async def close(self):
+            pass
+
+    e1 = ResponseTextDeltaEvent(
+        content_index=0, delta="From responses", item_id="item_0", logprobs=[], output_index=0, sequence_number=0, type="response.output_text.delta"
+    )
+
+    class MockResponsesStream:
+        def __init__(self, events):
+            self.events = events
+        def __aiter__(self):
+            return self
+        async def __anext__(self):
+            if not self.events:
+                raise StopAsyncIteration
+            return self.events.pop(0)
+        async def close(self):
+            pass
+
+    mock_client.chat = MagicMock()
+    mock_client.chat.completions = MagicMock()
+    mock_client.chat.completions.create = AsyncMock(return_value=MockChatStream([mock_chunk]))
+    mock_client.responses = MagicMock()
+    mock_client.responses.create = AsyncMock(return_value=MockResponsesStream([e1]))
+
+    # 1. Explicit chat_completions
+    backend_chat = OpenAIBackend(client=mock_client, model="model-a", api_mode="chat_completions")
+    chunks_chat = []
+    async for c in backend_chat.generate_stream([{"role": "user", "content": "hi"}]):
+        chunks_chat.append(c)
+    assert chunks_chat[0].text == "From chat"
+    assert mock_client.chat.completions.create.call_count == 1
+    assert mock_client.responses.create.call_count == 0
+
+    # 2. Explicit responses
+    backend_resp = OpenAIBackend(client=mock_client, model="model-a", api_mode="responses")
+    chunks_resp = []
+    async for c in backend_resp.generate_stream([{"role": "user", "content": "hi"}]):
+        chunks_resp.append(c)
+    assert chunks_resp[0].text == "From responses"
+    assert mock_client.responses.create.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_azure_openai_backend_responses_streaming():
+    from py_agent_core.backends.azure_openai import AzureOpenAIBackend
+    from openai.types.responses import ResponseReasoningTextDeltaEvent, ResponseTextDeltaEvent
+
+    mock_client = MagicMock()
+
+    e1 = ResponseReasoningTextDeltaEvent(
+        content_index=0, delta="Azure thinking...", item_id="item_0", output_index=0, sequence_number=0, type="response.reasoning_text.delta"
+    )
+    e2 = ResponseTextDeltaEvent(
+        content_index=0, delta="Azure answer.", item_id="item_1", logprobs=[], output_index=1, sequence_number=1, type="response.output_text.delta"
+    )
+
+    class MockStream:
+        def __init__(self, events):
+            self.events = events
+        def __aiter__(self):
+            return self
+        async def __anext__(self):
+            if not self.events:
+                raise StopAsyncIteration
+            return self.events.pop(0)
+        async def close(self):
+            pass
+
+    mock_client.responses = MagicMock()
+    mock_client.responses.create = AsyncMock(return_value=MockStream([e1, e2]))
+
+    backend = AzureOpenAIBackend(client=mock_client, model="gpt-6.1-sol", api_mode="responses")
+    chunks = []
+    async for chunk in backend.generate_stream([{"role": "user", "content": "prompt"}], options={"thinking_level": "medium"}):
+        chunks.append(chunk)
+
+    assert len(chunks) == 2
+    assert chunks[0].thinking == "Azure thinking..."
+    assert chunks[1].text == "Azure answer."
+
