@@ -160,6 +160,17 @@ We provide a comprehensive set of executable scripts in the [examples/](examples
 
 ---
 
+## 🛡️ Responsible Usage & Safety Disclaimer
+
+`python-agent-core` is a foundational engine for event-driven agent loops. When embedding it in production or autonomous systems, keep the following operational considerations in mind:
+
+* **💰 Token Spending & Cost Control:** Autonomous multi-turn agent loops and recursive worker trees (`Hierarchical Assistant`, `Agent Swarm`) consume LLM completion and reasoning tokens on every iteration. Unchecked or infinite loops can quickly incur significant API costs. Always configure spending limits and quotas in your provider consoles (OpenAI, Azure), enforce max turn limits in your application logic, and test complex flows offline with `DummyBackend` or `OllamaBackend`.
+* **⚠️ Tool Execution & Sandboxing:** Functions decorated with `@tool` run with the full permissions of the host Python process. When providing tools that perform file I/O, execute shell commands, or query databases, implement input validation, sandboxing, or interactive confirmation steps before executing destructive operations.
+* **🛑 Leverage Cooperative Preemption:** Always retain access to `agent.interrupt()` or an `AbortSignal` in your UI or orchestrator so users or external watchdogs can sever network sockets mid-token and halt tool runs immediately.
+* **📄 Warranty & Liability:** Provided "as is" under the MIT License. Contributors and maintainers assume no liability for LLM provider expenses incurred, runaway execution loops, or unintended side effects caused by user-defined tool implementations.
+
+---
+
 ## Running Tests
 
 Verify the entire test suite including backend formatting correctness, tool execution, and preemption flows:
