@@ -3,12 +3,12 @@
 ## Purpose
 Specification for repository licensing, ignores, and documentation metadata.
 ## Requirements
-### Requirement: MIT License
-The repository SHALL include a root-level LICENSE file containing the standard MIT License.
+### Requirement: Apache-2.0 License
+The repository SHALL include a root-level LICENSE file containing the standard Apache License 2.0.
 
 #### Scenario: Verify LICENSE file
 - **WHEN** the project is inspected at the root directory
-- **THEN** a LICENSE file SHALL exist and contain the MIT License text.
+- **THEN** a LICENSE file SHALL exist and contain the Apache License 2.0 text.
 
 ### Requirement: Ignored env files
 The repository SHALL ignore `.env` files in git to prevent credential leaks.

@@ -1,7 +1,7 @@
 # python-agent-core
 
 [![PyPI Version](https://img.shields.io/pypi/v/python-agent-core.svg)](https://pypi.org/project/python-agent-core/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Python Support](https://img.shields.io/badge/python-3.9%20%7C%203.10%20%7C%203.11%20%7C%203.12%20%7C%203.13%20%7C%203.14-blue)](https://github.com/akatzmann/py-agent-core)
 
 A minimalist, event-driven agent loop with **cooperative preemption** and unified backends in Python.
@@ -167,7 +167,7 @@ We provide a comprehensive set of executable scripts in the [examples/](examples
 * **💰 Token Spending & Cost Control:** Autonomous multi-turn agent loops and recursive worker trees (`Hierarchical Assistant`, `Agent Swarm`) consume LLM completion and reasoning tokens on every iteration. Unchecked or infinite loops can quickly incur significant API costs. Always configure spending limits and quotas in your provider consoles (OpenAI, Azure), enforce max turn limits in your application logic, and test complex flows offline with `DummyBackend` or `OllamaBackend`.
 * **⚠️ Tool Execution & Sandboxing:** Functions decorated with `@tool` run with the full permissions of the host Python process. When providing tools that perform file I/O, execute shell commands, or query databases, implement input validation, sandboxing, or interactive confirmation steps before executing destructive operations.
 * **🛑 Leverage Cooperative Preemption:** Always retain access to `agent.interrupt()` or an `AbortSignal` in your UI or orchestrator so users or external watchdogs can sever network sockets mid-token and halt tool runs immediately.
-* **📄 Warranty & Liability:** Provided "as is" under the MIT License. Contributors and maintainers assume no liability for LLM provider expenses incurred, runaway execution loops, or unintended side effects caused by user-defined tool implementations.
+* **📄 Warranty & Liability:** Provided "as is" under the Apache-2.0 License. Contributors and maintainers assume no liability for LLM provider expenses incurred, runaway execution loops, or unintended side effects caused by user-defined tool implementations.
 
 ---
 
@@ -185,4 +185,4 @@ We practice AI-first, spec-driven development using the [OpenSpec](https://githu
 
 ## License
 
-`py-agent-core` is open-source software licensed under the [MIT License](LICENSE).
+`python-agent-core` is open-source software licensed under the [Apache-2.0 License](LICENSE).
